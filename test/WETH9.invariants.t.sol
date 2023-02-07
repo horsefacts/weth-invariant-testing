@@ -12,7 +12,7 @@ contract WETH9Invariants is Test {
 
     function setUp() public {
         weth = new WETH9();
-        handler = new Handler(weth); 
+        handler = new Handler(weth);
 
         excludeContract(address(weth));
     }
@@ -22,9 +22,12 @@ contract WETH9Invariants is Test {
     // ETH balance plus the WETH totalSupply() should always
     // equal the total ETH_SUPPLY.
     function invariant_conservationOfETH() public {
-        assertEq(
-          ETH_SUPPLY, 
-          address(handler).balance + weth.totalSupply()
-        );
+        assertEq(ETH_SUPPLY, address(handler).balance + weth.totalSupply());
+    }
+
+    // The WETH contract's Ether balance should always be
+    // at least as much as the sum of individual deposits
+    function invariant_solvencyDeposits() public {
+        assertEq(address(weth).balance, handler.ghost_depositSum() - handler.ghost_withdrawSum());
     }
 }
