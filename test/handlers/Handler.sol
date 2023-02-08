@@ -83,6 +83,27 @@ contract Handler is Test {
         ghost_withdrawSum += amount;
     }
 
+    function approve(address spender, uint256 amount) public {
+        vm.prank(msg.sender);
+        weth.approve(spender, amount);
+    }
+
+    function transfer(address to, uint256 amount) public {
+        amount = bound(amount, 0, weth.balanceOf(msg.sender));
+        _actors.add(to);
+
+        vm.prank(msg.sender);
+        weth.transfer(to, amount);
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public {
+        amount = bound(amount, 0, weth.balanceOf(from));
+        _actors.add(to);
+
+        vm.prank(msg.sender);
+        weth.transferFrom(from, to, amount);
+    }
+
     function sendFallback(uint256 amount) public captureCaller {
         amount = bound(amount, 0, address(this).balance);
         _pay(msg.sender, amount);
