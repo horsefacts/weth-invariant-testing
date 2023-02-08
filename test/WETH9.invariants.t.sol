@@ -65,4 +65,30 @@ contract WETH9Invariants is Test {
     function assertAccountBalanceLteTotalSupply(address account) external {
         assertLe(weth.balanceOf(account), weth.totalSupply());
     }
+
+    function test_concrete_wat() public {
+        vm.prank(address(0x76006C4471fb6aDd17728e9c9c8B67d5AF06cDA0));
+        handler.transfer(address(0xe7E5d90B7F2995E37f675FbfFe3ecBad84ae3F96), 1214023766310705805701176537853568069216);
+
+        vm.prank(address(0x0000000000000000000000000000000000000750));
+        handler.forcePush(120206896941022903464812169);
+
+        vm.prank(address(0x60c67673Ac7f198805e70CD86BA42e822f0131b0));
+        handler.sendFallback(115792089237316195423570985008687907853269984665640564039457584007913129639933);
+
+        vm.prank(address(0xDBaD009C67eD04C03AEc0Dc77178A6A6629A6bbD));
+        handler.sendFallback(208312292878968729819296);
+
+        vm.prank(address(0x1142aBdFeCFb75618fcFc1F8868966C1dB895a6e));
+        handler.transferFrom(
+            address(0x00000000000000000053Ed0A792881a65224e6a5),
+            address(0xcEaEfAEB86d7e8A75BeD1d28Da9d22C4eF33516A),
+            19039762917734506487814490
+        );
+
+        vm.prank(address(0x60c67673Ac7f198805e70CD86BA42e822f0131b0));
+        handler.withdraw(20699250629484519464169139825047693);
+
+        assertEq(ETH_SUPPLY, address(handler).balance + weth.totalSupply());
+    }
 }

@@ -47,8 +47,10 @@ contract Handler is Test {
     function withdraw(uint256 amount) public captureCaller {
         amount = bound(amount, 0, weth.balanceOf(msg.sender));
 
-        vm.prank(msg.sender);
+        vm.startPrank(msg.sender);
         weth.withdraw(amount);
+        _pay(address(this), amount);
+        vm.stopPrank();
 
         ghost_withdrawSum += amount;
     }
@@ -79,9 +81,8 @@ contract Handler is Test {
         _pay(msg.sender, amount);
 
         vm.prank(msg.sender);
-        (bool success,) = address(weth).call{value: amount}("");
+        _pay(address(weth), amount);
 
-        require(success, "sendFallback failed");
         ghost_depositSum += amount;
     }
 

@@ -1,7 +1,3 @@
-# WETH Invariant Testing
-
-![Build Status](https://github.com/horsefacts/promises/actions/workflows/.github/workflows/test.yml/badge.svg?branch=main)
-
 There's been a lot of interest recently in _invariant testing_, a new feature in the Foundry toolkit, but so far there's not much documentation on getting started with this advanced testing technique. The Maple Finance [invariant test repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants), this [example repo](https://github.com/lucas-manuel/invariant-examples) from [Lucas Manuel](https://twitter.com/lucasmanuel_eth), and a forthcoming section in the [Foundry book](https://github.com/foundry-rs/book/pull/760/files) are all great resources, but it's still tough to get up and running. 
 
 In this short guide, we'll write invariant tests from the ground up for Wrapped Ether, one of the most important contracts on mainnet.
@@ -704,7 +700,9 @@ We'll add a `_pay` helper to make transfers before tests that need them:
     }
 ```
 
-Finally, we need to update the `bound` condition in `withdraw` not to exceed the `msg.sender`'s WETH balance on withdrawals, rather than the handler contract's total balance. (Otherwise many of these calls will revert):
+Finally, we need to make two changes in `withdraw`. First, we need to update the `bound` condition in `withdraw` not to exceed the `msg.sender`'s WETH balance on withdrawals, rather than the handler contract's total balance. (Otherwise many of these calls will revert).
+
+Second, we need to send the withdrawn amount back to the handler using `_pay`, to keep all Ether in our closed two-contract system. (Otherwise, it will remain with `msg.sender`):  
 
 ```solidity
     function deposit(uint256 amount) public {
@@ -720,8 +718,10 @@ Finally, we need to update the `bound` condition in `withdraw` not to exceed the
     function withdraw(uint256 amount) public {
         amount = bound(amount, 0, weth.balanceOf(msg.sender));
 
-        vm.prank(msg.sender);
+        vm.startPrank(msg.sender);
         weth.withdraw(amount);
+        _pay(address(this), amount);
+        vm.stopPrank();
         
         ghost_withdrawSum += amount;
     }
