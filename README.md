@@ -1,3 +1,7 @@
+# WETH Invariant Testing
+
+![Build Status](https://github.com/horsefacts/promises/actions/workflows/.github/workflows/test.yml/badge.svg?branch=main)
+
 There's been a lot of interest recently in _invariant testing_, a new feature in the Foundry toolkit, but so far there's not much documentation on getting started with this advanced testing technique. The Maple Finance [invariant test repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants), this [example repo](https://github.com/lucas-manuel/invariant-examples) from [Lucas Manuel](https://twitter.com/lucasmanuel_eth), and a forthcoming section in the [Foundry book](https://github.com/foundry-rs/book/pull/760/files) are all great resources, but it's still tough to get up and running. 
 
 In this short guide, we'll write invariant tests from the ground up for Wrapped Ether, one of the most important contracts on mainnet.
