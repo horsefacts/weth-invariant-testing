@@ -45,7 +45,7 @@ contract Handler is Test {
     }
 
     function withdraw(uint256 amount) public captureCaller {
-        amount = bound(amount, 0, weth.balanceOf(address(this)));
+        amount = bound(amount, 0, weth.balanceOf(msg.sender));
 
         vm.prank(msg.sender);
         weth.withdraw(amount);
