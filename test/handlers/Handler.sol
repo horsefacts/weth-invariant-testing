@@ -7,6 +7,12 @@ import {WETH9} from "../../src/WETH9.sol";
 
 uint256 constant ETH_SUPPLY = 120_500_000 ether;
 
+contract ForcePush {
+    constructor(address dst) payable {
+        selfdestruct(payable(dst));
+    }
+}
+
 contract Handler is Test {
     using LibAddressSet for AddressSet;
 
@@ -14,6 +20,7 @@ contract Handler is Test {
 
     uint256 public ghost_depositSum;
     uint256 public ghost_withdrawSum;
+    uint256 public ghost_forcePushSum;
 
     AddressSet internal _actors;
 
@@ -76,6 +83,12 @@ contract Handler is Test {
 
         require(success, "sendFallback failed");
         ghost_depositSum += amount;
+    }
+
+    function forcePush(uint256 amount) public {
+        amount = bound(amount, 0, address(this).balance);
+        new ForcePush{ value: amount }(address(weth));
+        ghost_forcePushSum += amount;
     }
 
     function forEachActor(function(address) external func) public {

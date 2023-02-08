@@ -866,3 +866,385 @@ Running 3 tests for test/WETH9.invariants.t.sol:WETH9Invariants
 [PASS] invariant_solvencyDeposits() (runs: 10000, calls: 150000, reverts: 10)
 Test result: ok. 3 passed; 0 failed; finished in 179.86s
 ```
+
+Let's add one more invariant property and make use of our `forEach` iterator. This is kind of an odd property, but we'll check that no individual token owner's balance can exceed the `weth.totalSupply()`. An underflow in token transfer logic might be one way to violate this property:
+
+```solidity
+    // No individual account balance can exceed the
+    // WETH totalSupply().
+    function invariant_depositorBalances() public {
+        handler.forEachActor(this.assertAccountBalanceLteTotalSupply);
+    }
+
+    function assertAccountBalanceLteTotalSupply(address account) external {
+        assertLe(weth.balanceOf(account), weth.totalSupply());
+    }
+```
+
+```
+Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
+[PASS] invariant_conservationOfETH() (runs: 1000, calls: 15000, reverts: 11)
+[PASS] invariant_depositorBalances() (runs: 1000, calls: 15000, reverts: 11)
+[PASS] invariant_solvencyBalances() (runs: 1000, calls: 15000, reverts: 11)
+[PASS] invariant_solvencyDeposits() (runs: 1000, calls: 15000, reverts: 11)
+Test result: ok. 4 passed; 0 failed; finished in 5.80s
+```
+
+We still haven't exposed `approve`, `transfer`, and `transferFrom` from our handler. Let's do that now. 
+
+```solidity
+    function approve(address spender, uint256 amount) public {
+        vm.prank(msg.sender);
+        weth.approve(spender, amount);
+    }
+
+    function transfer(address to, uint256 amount) public {
+        amount = bound(amount, 0, weth.balanceOf(msg.sender));
+        _actors.add(to);
+
+        vm.prank(msg.sender);
+        weth.transfer(to, amount);
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public {
+        amount = bound(amount, 0, weth.balanceOf(from));
+        _actors.add(to);
+
+        vm.prank(msg.sender);
+        weth.transferFrom(from, to, amount);
+    }
+```
+
+Note that we need to add the _destination_ addresses (the `to` argument in `transfer` and `transferFrom`) to keep track of all the known actors that have balances in the system.
+
+Don't forget to add these new selectors to our configuration in `setUp`:
+
+```solidity
+    function setUp() public {
+        weth = new WETH9();
+        handler = new Handler(weth);
+
+        bytes4[] memory selectors = new bytes4[](6);
+        selectors[0] = Handler.deposit.selector;
+        selectors[1] = Handler.withdraw.selector;
+        selectors[2] = Handler.sendFallback.selector;
+        selectors[3] = Handler.approve.selector;
+        selectors[4] = Handler.transfer.selector;
+        selectors[5] = Handler.transferFrom.selector;
+
+        targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
+
+        excludeContract(address(weth));
+    }
+```
+
+```bash
+Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
+[PASS] invariant_conservationOfETH() (runs: 1000, calls: 15000, reverts: 8)
+[PASS] invariant_depositorBalances() (runs: 1000, calls: 15000, reverts: 8)
+[PASS] invariant_solvencyBalances() (runs: 1000, calls: 15000, reverts: 8)
+[PASS] invariant_solvencyDeposits() (runs: 1000, calls: 15000, reverts: 8)
+Test result: ok. 4 passed; 0 failed; finished in 5.87s
+```
+
+We've changed quite a lot and our tests still pass. But are we sure we can really trust them? Unlike unit tests, where mapping one input to one expected output is pretty clear, I find that invariant tests can sometimes be tricky and accidentally pass if we've introduced an incorrect assumption about the system or a condition that is vacuously true.
+
+One way to ensure our tests are really working is to _test our tests_ by introducing artificial bugs.  Let's intentionally break `deposit` accounting in `WETH9`. Instead of issuing `msg.sender` an amount of WETH equal to `msg.value`, let's give them just 1 wei instead:
+
+```solidity
+    function deposit() public payable {
+        balanceOf[msg.sender] += 1;
+        emit Deposit(msg.sender, msg.value);
+    }
+```
+
+If our invariant tests are any good, they should catch the bug we introduced:
+
+```bash
+$ forge test
+Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
+[PASS] invariant_conservationOfETH() (runs: 2000, calls: 29974, reverts: 3)
+[FAIL. Reason: Assertion failed.]
+        [Sequence]
+                sender=0x849a5a123d8d365eef30374417ef4fcbba5a9781
+                addr=[test/handlers/Handler.sol:Handler]
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
+                calldata=withdraw(uint256), 
+                args=[365161364]
+                sender=0xcbac49e135a0340b2fca24685962c08ed3aa81c7 
+                addr=[test/handlers/Handler.sol:Handler]
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b                           
+                calldata=sendFallback(uint256), 
+                args=[0]
+
+ invariant_depositorBalances() (runs: 2000, calls: 29974, reverts: 3)
+[FAIL. Reason: Assertion failed.]
+        [Sequence]
+                sender=0x000000000000000000000000000000000000006a 
+                addr=[test/handlers/Handler.sol:Handler]
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
+                calldata=approve(address,uint256), 
+                args=[0x6D50393ED4ed2f7A64e40bdCA11E430dC276bbf3, 26589664]
+                sender=0x0f9be7012c9f187334111c3a4f6811e6132e4815 
+                addr=[test/handlers/Handler.sol:Handler]
+                    0x2e234dae75c793f67a35089c9d99245e1c58470b
+                calldata=sendFallback(uint256), 
+                args=[2936]
+
+ invariant_solvencyBalances() (runs: 2000, calls: 29974, reverts: 3)
+[PASS] invariant_solvencyDeposits() (runs: 2000, calls: 29974, reverts: 3)
+Test result: FAILED. 2 passed; 2 failed; finished in 16.18s
+```
+
+Looks like they do—we broke the "depositor balances" and "balance solvency" invariants.
+
+A technique I like to use here is to save a few bugs in the contract under test as git `.patch` files in a `bugs` folder inside our project repo. We can then reapply them from time to time to double check our tests:
+
+```diff
+$ git diff > bugs/bug1.patch
+$ cat bugs/bug1.patch
+diff --git a/src/WETH9.sol b/src/WETH9.sol
+index cd55b98..ccb40cb 100644
+--- a/src/WETH9.sol
++++ b/src/WETH9.sol
+@@ -33,7 +33,7 @@ contract WETH9 {
+     }
+ 
+     function deposit() public payable {
+-        balanceOf[msg.sender] += msg.value;
++        balanceOf[msg.sender] += 1;
+         emit Deposit(msg.sender, msg.value);
+     }
+ 
+```
+
+Let's add a few more. We'll alter `withdraw` to send back only 1 wei:
+
+```diff
+diff --git a/src/WETH9.sol b/src/WETH9.sol
+index cd55b98..961f03b 100644
+--- a/src/WETH9.sol
++++ b/src/WETH9.sol
+@@ -40,7 +40,7 @@ contract WETH9 {
+     function withdraw(uint256 wad) public {
+         require(balanceOf[msg.sender] >= wad);
+         balanceOf[msg.sender] -= wad;
+-        payable(msg.sender).transfer(wad);
++        payable(msg.sender).transfer(1);
+         emit Withdrawal(msg.sender, wad);
+     }
+```
+
+Remove the call to `deposit` in the fallback function:
+
+```diff
+diff --git a/src/WETH9.sol b/src/WETH9.sol
+index cd55b98..6e74bd5 100644
+--- a/src/WETH9.sol
++++ b/src/WETH9.sol
+@@ -29,7 +29,6 @@ contract WETH9 {
+     mapping(address => mapping(address => uint256)) public allowance;
+ 
+     fallback() external payable {
+-        deposit();
+     }
+ 
+     function deposit() public payable {
+```
+
+And remove auth checks and reverse the logic in `transferFrom`:
+
+```diff
+diff --git a/src/WETH9.sol b/src/WETH9.sol
+index cd55b98..26cec99 100644
+--- a/src/WETH9.sol
++++ b/src/WETH9.sol
+@@ -59,15 +59,8 @@ contract WETH9 {
+     }
+ 
+     function transferFrom(address src, address dst, uint256 wad) public returns (bool) {
+-        require(balanceOf[src] >= wad);
+-
+-        if (src != msg.sender && allowance[src][msg.sender] != type(uint256).max) {
+-            require(allowance[src][msg.sender] >= wad);
+-            allowance[src][msg.sender] -= wad;
+-        }
+-
+-        balanceOf[src] -= wad;
+-        balanceOf[dst] += wad;
++        balanceOf[src] -= wad;
++        balanceOf[dst] += 1;
+ 
+         emit Transfer(src, dst, wad);v
+```
+
+If we `git apply` each patch in turn and verify that our tests catch each fake bug, we can be pretty confident that they are working: 
+
+```bash
+$ git apply bugs/bug2.patch
+$ forge test
+Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
+[FAIL. Reason: Assertion failed.]
+ invariant_conservationOfETH() (runs: 6, calls: 84, reverts: 1)
+[FAIL. Reason: Assertion failed.]
+ invariant_depositorBalances() (runs: 6, calls: 84, reverts: 1)
+[FAIL. Reason: Assertion failed.]
+ invariant_solvencyBalances() (runs: 6, calls: 84, reverts: 1)
+[FAIL. Reason: Assertion failed.]
+ invariant_solvencyDeposits() (runs: 6, calls: 84, reverts: 1)
+Test result: FAILED. 0 passed; 4 failed; finished in 212.99ms
+
+Encountered a total of 4 failing tests, 0 tests succeeded
+```
+
+We can add a simple Makefile that will apply a given patch and run tests:
+
+```make
+check:
+	git apply "bugs/$(bug).patch" && forge test
+
+clean:
+	git checkout src/WETH9.sol
+```
+
+To apply a patch and run tests, run:
+
+```bash
+$ make bug=bug1 check
+```
+
+To undo changes, run:
+
+```bash
+$ make clean
+```
+
+Our tests appear pretty comprehensive, but there is one final boss battle before we can call them complete. 
+
+There is one intuitive invariant that famously  _does not hold_ for the WETH contract. It has to do with the way `WETH9` calculates `totalSupply()`:
+
+```solidity
+    function totalSupply() public view returns (uint256) {
+        return address(this).balance;
+    }
+```
+
+Rather than storing the total token balance in a separate state variable, the WETH contract uses its total Ether balance as the total token supply. This saves gas, but actually breaks the invariant that `weth.totalSupply()` equals the sum of all balances!
+
+There is one clever way to force `WETH9` to increase `totalSupply()` without creating new WETH tokens: calling `selfdestruct` on a contract to force push Ether to its contract balance.
+
+The Foundry fuzzer can do a lot of things, but it won't do that. We'll need to simulate this scenario in our handler ourselves. Let's add a `ForcePush` contract that will `selfdestruct` and send Ether to the WETH contract:
+
+```solidity
+contract ForcePush {
+    constructor(address dst) payable {
+        selfdestruct(payable(dst));
+    }
+}
+```
+
+This contract will immediately destroy itself and send any balance to the `dst` address in its constructor.
+
+We'll add a handler function to invoke it:
+
+```solidity
+    function forcePush(uint256 amount) public {
+        amount = bound(amount, 0, address(this).balance);
+        new ForcePush{ value: amount }(address(weth));
+    }
+```
+
+And finally, register it with the fuzzer:
+
+```solidity
+    function setUp() public {
+        weth = new WETH9();
+        handler = new Handler(weth);
+
+        bytes4[] memory selectors = new bytes4[](7);
+        selectors[0] = Handler.deposit.selector;
+        selectors[1] = Handler.withdraw.selector;
+        selectors[2] = Handler.sendFallback.selector;
+        selectors[3] = Handler.approve.selector;
+        selectors[4] = Handler.transfer.selector;
+        selectors[5] = Handler.transferFrom.selector;
+        selectors[6] = Handler.forcePush.selector;
+
+        targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
+
+        excludeContract(address(weth));
+    }
+```
+
+Our tests now fail, and it looks like they're failing in the places we should expect:
+
+```bash
+Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
+[PASS] invariant_conservationOfETH() (runs: 5000, calls: 74986, reverts: 9)
+[PASS] invariant_depositorBalances() (runs: 5000, calls: 74986, reverts: 9)
+[FAIL. Reason: Assertion failed.]
+        [Sequence]
+                sender=0x0000000000000000000000000000000000000b69 
+                addr=[test/handlers/Handler.sol:Handler]
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
+                calldata=forcePush(uint256), 
+                args=[2250]
+
+ invariant_solvencyBalances() (runs: 5000, calls: 74986, reverts: 9)
+[FAIL. Reason: Assertion failed.]
+        [Sequence]
+                sender=0x0000000000000000000000000000000000000b69 
+                addr=[test/handlers/Handler.sol:Handler]
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
+                calldata=forcePush(uint256), 
+                args=[2250]
+
+ invariant_solvencyDeposits() (runs: 5000, calls: 74986, reverts: 9)
+Test result: FAILED. 2 passed; 2 failed; finished in 68.53s
+```
+
+"Conservation of ETH" still passes. Since it's a property of `weth.totalSupply()` and the handler balance, it's not affected by the balance inconsistency. So does our depositor balance invariant, since it's still the case that no depositor's balance will exceed `weth.totalSupply()`.
+
+But our two solvency invariants will need an update. We could simply relax the invariant to check that the WETH contract's Ether balance is _at least as much_ as the individual deposits/balances. But we have the ability to account for the amount of force-pushed Ether exactly, so let's do so.
+
+We'll add one more ghost variable to our handler and increment it when we force push Ether:
+
+```solidity
+    uint256 public ghost_forcePushSum;
+    
+    function forcePush(uint256 amount) public {
+        amount = bound(amount, 0, address(this).balance);
+        new ForcePush{ value: amount }(address(weth));
+        ghost_forcePushSum += amount;
+    }
+```
+
+And update our invariants to account for this extra Ether:
+
+```solidity
+    // The WETH contract's Ether balance should always be
+    // at least as much as the sum of individual deposits
+    function invariant_solvencyDeposits() public {
+        assertEq(
+            address(weth).balance, 
+            handler.ghost_depositSum() + 
+            handler.ghost_forcePushSum() - 
+            handler.ghost_withdrawSum()
+        );
+    }
+
+    // The WETH contract's Ether balance should always be
+    // at least as much as the sum of individual balances
+    function invariant_solvencyBalances() public {
+        uint256 sumOfBalances = handler.reduceActors(0, this.accumulateBalance);
+        assertEq(
+            address(weth).balance - handler.ghost_forcePushSum(), 
+            sumOfBalances
+        );
+    }
+
+```
+
+This case is an interesting illustration of the limits of fuzz testing. A symbolic execution test that models Ether sends via `selfdestruct` would catch this bug pretty quickly, but we nearly missed it with the fuzzer. On the other hand, invariant tests are much faster to run than tests using a prover/constraint solver, and allow us to build up a suite of pretty high confidence invariant properties that we might want to further verify using even more powerful tools.
+
+As with all smart contract testing, we should do it all when we can: unit tests, fuzz tests, fork tests, invariant tests, and formal verification. 
