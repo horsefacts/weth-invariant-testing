@@ -1374,3 +1374,5 @@ Success! Next time Crypto Twitter starts spreading FUD about "unbacked WETH," se
 ## More resources
 - [Maple Finance invariant tests repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants)
 - [invariant-examples repo](https://github.com/lucas-manuel/invariant-examples)
+
+_Thanks to [msolomon44](https://twitter.com/msolomon44), [zachobront](https://twitter.com/zachobront), and [lucasmanuel_eth](https://twitter.com/lucasmanuel_eth) for reviewing earlier drafts of this guide._
