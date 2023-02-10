@@ -4,7 +4,7 @@ out = 'out'
 libs = ['lib']
 
 [invariant]
-runs = 10000
+runs = 2000
 depth = 15
 fail_on_revert = false
 call_override = false

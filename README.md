@@ -2,7 +2,7 @@
 
 ![Build Status](https://github.com/horsefacts/weth-invariant-testing/actions/workflows/.github/workflows/test.yml/badge.svg?branch=main)
 
-There's been a lot of interest recently in _invariant testing_, a new feature in the Foundry toolkit, but so far there's not much documentation on getting started with this advanced testing technique. The Maple Finance [invariant test repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants), this [example repo](https://github.com/lucas-manuel/invariant-examples) from [Lucas Manuel](https://twitter.com/lucasmanuel_eth), and a forthcoming section in the [Foundry book](https://github.com/foundry-rs/book/pull/760/files) are all great resources, but it's still tough to get up and running. 
+There's been a lot of interest recently in _invariant testing_, a new feature in the [Foundry](https://github.com/foundry-rs/foundry) toolkit, but so far there's not much documentation on getting started with this advanced testing technique. The Maple Finance [invariant test repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants), this [example repo](https://github.com/lucas-manuel/invariant-examples) from [Lucas Manuel](https://twitter.com/lucasmanuel_eth), and a forthcoming section in the [Foundry book](https://github.com/foundry-rs/book/pull/760/files) are all great resources, but it's still tough to get up and running. 
 
 In this short guide, we'll write invariant tests from the ground up for Wrapped Ether, one of the most important contracts on mainnet.
 
@@ -125,7 +125,7 @@ src
 
 ## Invariant test setup
 
-An invariant test contract looks just like the `Test` contracts you already know and love from unit and fuzz testing with Foundry.  In fact, all the helpers we'll need in order to define and test invariants are now included in the base `forge-std/Test.sol` contract.
+An invariant test contract looks just like the `Test` contracts you already know and love from unit and fuzz testing with Foundry.  In the latest version of `forge-std`, all the helpers we'll need in order to define and test invariants are now included in the base `forge-std/Test.sol` contract. (If you're using `1.3.0`, the latest stable release, you may also need to import and inherit from `forge-std/InvariantTest.sol`).
 
 Let's create a test contract in `test/WETH9.invariants.t.sol`:
 
@@ -134,9 +134,10 @@ Let's create a test contract in `test/WETH9.invariants.t.sol`:
 pragma solidity ^0.8.13;
 
 import {Test} from "forge-std/Test.sol";
+import {InvariantTest} from "forge-std/InvariantTest.sol";
 import {WETH9} from "../src/WETH9.sol";
 
-contract WETH9Invariants is Test {
+contract WETH9Invariants is Test, {
     WETH9 public weth;
 
     function setUp() public {
@@ -268,7 +269,7 @@ With that caveat in mind, let's start building out our handler contract. We'll s
 ```solidity
 import {WETH9} from "../../src/WETH9.sol";
 
-contract Handler is Test {
+contract Handler {
     WETH9 public weth;
 
     constructor(WETH9 _weth) {
@@ -286,9 +287,11 @@ Remember, the fuzzer will now generate random calls with random values to the fu
 Of course, we'll need an ETH balance in order to make a deposit. Let's `deal` ourselves some Ether in the constructor:
 
 ```solidity
-import {Test} from "forge-std/Test.sol";
+import {CommonBase} from "forge-std/Base.sol";
+import {StdCheats} from "forge-std/StdCheats.sol";
+import {StdUtils} from "forge-std/StdUtils.sol";
 
-contract Handler is Test {
+contract Handler is CommonBase, StdCheats, StdUtils {
     WETH9 public weth;
 
     constructor(WETH9 _weth) {
@@ -315,7 +318,7 @@ contract WETH9Invariants is Test {
         weth = new WETH9();
         handler = new Handler(weth); 
 
-        excludeContract(address(weth));
+        targetContract(address(handler));
     }
 
     function invariant_wethSupplyIsAlwaysZero() public {
@@ -324,7 +327,7 @@ contract WETH9Invariants is Test {
 }
 ```
 
-Don't forget to call `excludeContract`! If we don't configure the fuzzer to explictly filter for a given contract, it will implicitly fuzz all methods on all contracts created during `setUp`.
+Don't forget to call `targetContract`! If we don't configure the fuzzer to explictly filter for a given contract, it will implicitly fuzz all methods on all contracts created during `setUp`.
 
 Let's give our new, wrapped tests a run:
 
@@ -359,7 +362,7 @@ Here's one: in the constrained world of our tests, our `Handler` contract and `W
 We gave ourselves 10 Ether when we set up our handler contract, but let's make that a little more realistic. There are currently around 120-and-a-half million ETH in circulation. Let's `deal` all of it to ourselves when we create the handler:
 
 ```solidity
-contract Handler is Test {
+contract Handler is CommonBase, StdCheats, StdUtils {
     WETH9 public weth;
 
     uint256 public constant ETH_SUPPLY = 120_500_000 ether;
@@ -394,7 +397,7 @@ And let's update our invariant to describe this property:
 We'll also add one more condition to our test: we'll `bound` the deposit amount to be less than or equal to the remaining Ether balance in the handler contract, so calls don't revert when they attempt to deposit more ETH than they have available:
 
 ```solidity
-contract Handler is Test {
+contract Handler is CommonBase, StdCheats, StdUtils {
     WETH9 public weth;
 
     uint256 public constant ETH_SUPPLY = 120_500_000;
@@ -795,7 +798,7 @@ library LibAddressSet {
 Let's use the library in our handler and create an internal `AddressSet` named `_actors`. And let's expose the array of saved actors through an external function so we can access it from our tests:
 
 ```solidity
-contract Handler is Test {
+contract Handler is CommonBase, StdCheats, StdUtils {
     using LibAddressSet for AddressSet;
 
     AddressSet internal _actors;
@@ -944,7 +947,7 @@ There's one more change we need to make in the test contract to make this all wo
             selectors: selectors
         }));
 
-        excludeContract(address(weth));
+        targetContract(address(handler));
     }
 ```
 
@@ -1033,7 +1036,7 @@ Don't forget to add these new selectors to our configuration in `setUp`:
           }
         ));
 
-        excludeContract(address(weth));
+        targetContract(address(handler));
     }
 ```
 
@@ -1275,7 +1278,7 @@ And finally, register our handler functon's selector with the fuzzer:
 
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
 
-        excludeContract(address(weth));
+        targetContract(address(weth));
     }
 ```
 

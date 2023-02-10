@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {Test} from "forge-std/Test.sol";
+import {CommonBase} from "forge-std/Base.sol";
+import {StdCheats} from "forge-std/StdCheats.sol";
+import {StdUtils} from "forge-std/StdUtils.sol";
 import {AddressSet, LibAddressSet} from "../helpers/AddressSet.sol";
 import {WETH9} from "../../src/WETH9.sol";
 
@@ -13,7 +15,7 @@ contract ForcePush {
     }
 }
 
-contract Handler is Test {
+contract Handler is CommonBase, StdCheats, StdUtils {
     using LibAddressSet for AddressSet;
 
     WETH9 public weth;

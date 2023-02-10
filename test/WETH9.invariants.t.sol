@@ -25,7 +25,7 @@ contract WETH9Invariants is Test {
 
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
 
-        excludeContract(address(weth));
+        targetContract(address(handler));
     }
 
     // ETH can only be wrapped into WETH, WETH can only
