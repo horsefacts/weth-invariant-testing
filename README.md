@@ -2,7 +2,7 @@
 
 ![Build Status](https://github.com/horsefacts/weth-invariant-testing/actions/workflows/.github/workflows/test.yml/badge.svg?branch=main)
 
-There's been a lot of interest recently in _invariant testing_, a new feature in the [Foundry](https://github.com/foundry-rs/foundry) toolkit, but so far there's not much documentation on getting started with this advanced testing technique. The Maple Finance [invariant test repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants), this [example repo](https://github.com/lucas-manuel/invariant-examples) from [Lucas Manuel](https://twitter.com/lucasmanuel_eth), and a forthcoming section in the [Foundry book](https://github.com/foundry-rs/book/pull/760/files) are all great resources, but it's still tough to get up and running.
+There's been a lot of interest recently in _invariant testing_, a new feature in the [Foundry](https://github.com/foundry-rs/foundry) toolkit, but until recently, there hasn't been much documentation on getting started with this advanced testing technique. The Maple Finance [invariant test repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants), this [example repo](https://github.com/lucas-manuel/invariant-examples) from [Lucas Manuel](https://twitter.com/lucasmanuel_eth), and a new chapter in the [Foundry book](https://book.getfoundry.sh/forge/invariant-testing) are all great resources, but it's still tough to get up and running.
 
 In this short guide, we'll write invariant tests from the ground up for Wrapped Ether, one of the most important contracts on mainnet.
 
@@ -197,7 +197,8 @@ Let's make a change and try again. We'll change the name, too, since our invaria
 It's not a particularly useful or realistic assertion, but hey, it works!
 
 ```bash
-$ forge test                                                                        Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
+$ forge test
+Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
 [PASS] invariant_wethSupplyIsAlwaysZero()
 (runs: 1000, calls: 15000, reverts: 8671)
 Test result: ok. 1 passed; 0 failed; finished in 873.42ms
@@ -1002,10 +1003,10 @@ Earlier, I mentioned the importance of double checking all our assumptions as we
     }
 ```
 
-It's a subtle bug, but here'san explanation:
+There's a subtle bug here that means we're not testing what we think we are:
 - Since the possibility space for a random `address` is so large, most of the time the fuzzer will choose a new, never before seen address as `msg.sender`.
 - Since `msg.sender` won't yet have a balance, the `bound` statement will set the withdrawal amount to zero.
-- A close look at the `WETH` contract shows that it will allow zero withdrawals.
+- A close look at the `WETH` contract shows that it will allow zero withdrawals:
 
 ```solidity
     function withdraw(uint256 wad) public {
@@ -1018,7 +1019,9 @@ It's a subtle bug, but here'san explanation:
 
 It's very likely that most of the `withdraw` calls in our test are zero value withdrawals that don't really exercise the invariants we're trying to test! We may get lucky from time to time by running our tests with lots of runs and a high depth, but we should probably constrain our tests even further.
 
-One technique we can use to explore whether this is a real problem is a _call summary_ that counts up calls to each of our handler functions and prints a summary at the end of a test run. Let's add a `calls` mapping to our handler that will count each call to our handler functions, a `countCall(bytes32)` modifier to log them, and a `callSummary()` function that will print a summary:
+One technique we can use to explore and fix this problem is a _call summary_ that counts up calls to each of our handler functions and prints them at the end of a test run.
+
+Let's add a `calls` mapping to our handler that will count each call to our handler functions, a `countCall(bytes32)` modifier to log them, and a `callSummary()` function that will print a summary:
 
 ```solidity
 import {console} from "forge-std/console.sol";
@@ -1045,7 +1048,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 We'll apply the modifier to each handler function exposed to the fuzzer and pass the name of the function:
 
 ```solidity
-    function deposit(uint256 amount) public countCaller countCall("deposit") {
+    function deposit(uint256 amount) public captureCaller countCall("deposit") {
         amount = bound(amount, 0, address(this).balance);
         _pay(msg.sender, amount);
 
@@ -1054,13 +1057,10 @@ We'll apply the modifier to each handler function exposed to the fuzzer and pass
 
         ghost_depositSum += amount;
     }
+    function withdraw(uint256 amount) public countCall("withdraw") {
+        amount = bound(amount, 0, weth.balanceOf(msg.sender));
 
-    function withdraw(uint256 callerSeed, uint256 amount) public countCall("withdraw") {
-        address caller = _actors.rand(callerSeed);
-        amount = bound(amount, 0, weth.balanceOf(caller));
-        if (amount == 0) ghost_zeroWithdrawals++;
-
-        vm.startPrank(caller);
+        vm.startPrank(msg.sender);
         weth.withdraw(amount);
         _pay(address(this), amount);
         vm.stopPrank();
@@ -1100,7 +1100,7 @@ Although we performed 2000 runs, the summary printed here is a snapshot of calls
 
 This kind of snapshot can be a helpful way to observe the distribution of calls during a fuzz run and help explore and debug our tests themselves.
 
-So, are we actually ever exercising a nonzero `withdraw` in our tests? Let's find out. We can count up zero withdrawals using a ghost variable, update `withdraw` to increment our zero withdrawal counter, and add it to our call summary:
+So, are we ever actually exercising a nonzero `withdraw` in our tests? Let's find out. We can count up zero withdrawals using a ghost variable, update `withdraw` to increment our zero withdrawal counter, and add it to our call summary:
 
 ```solidity
     uint256 public ghost_zeroWithdrawals;
@@ -1167,9 +1167,9 @@ All our calls were still zero withdrawals! We'll need to constrain our tests a b
 
 ## Reusing actors
 
-Let's update the way we're using and tracking actors. Rather than any random address calling `withdraw`, let's ensure that the caller of `withdraw` is an address in the `_actors` set. This should prevent zero withdrawals from random addresses.
+Let's update the way we're using and tracking actors. Rather than letting the fuzzer choose any random address to call `withdraw`, let's ensure that the caller of `withdraw` is an address in the `_actors` set. This should prevent zero withdrawals from random addresses.
 
-To start, we'll add a `rand(uint256)` function to `LibAddressSet` that takes a random seed and returns an actor address from the stored set. (If we don't want tests to revert when we call `rand()` before an address has been saved, we can hardcode a return address for the case when the set is empty):
+To start, we'll add a `rand(uint256)` function to `LibAddressSet` that takes a random seed and selects an actor address from the stored set. This still gives us an element of randomness, but selects from a constrained set of addresses. (If we don't want tests to revert when we call `rand()` before an address has been saved, we can hardcode a return address for the case when the set is empty):
 
 ```solidity
 library LibAddressSet {
@@ -1184,7 +1184,7 @@ library LibAddressSet {
 }
 ```
 
-Next, let's remove `msg.sender` from `withdraw` and update it to instead select a random caller from our `_actors` set. To do so, we'll add an extra `uint256 callerSeed` argument to the handler function:
+Next, let's remove `msg.sender` from `withdraw` and update it to instead select a random caller from our `_actors` set. To do so, we'll add an extra `uint256 callerSeed` argument to the handler function, and pass this through to `rand()`:
 
 ```solidity
     function withdraw(uint256 callerSeed, uint256 amount) public countCall("withdraw") {
@@ -1230,7 +1230,11 @@ Looking better! Note that there will still be _some_ zero withdrawals, since it'
 We still haven't exposed `approve`, `transfer`, and `transferFrom` from our handler. Let's do that now. We'll want to constrain these to known actors like we did with `withdraw`:
 
 ```solidity
-    function approve(uint256 callerSeed, uint256 spenderSeed, uint256 amount) public countCall("approve") {
+    function approve(
+        uint256 callerSeed,
+        uint256 spenderSeed,
+        uint256 amount
+    ) public countCall("approve") {
         address caller = _actors.rand(callerSeed);
         address spender = _actors.rand(spenderSeed);
 
@@ -1238,7 +1242,11 @@ We still haven't exposed `approve`, `transfer`, and `transferFrom` from our hand
         weth.approve(spender, amount);
     }
 
-    function transfer(uint256 callerSeed, uint256 toSeed, uint256 amount) public countCall("transfer") {
+    function transfer(
+        uint256 callerSeed,
+        uint256 toSeed,
+        uint256 amount
+    ) public countCall("transfer") {
         address caller = _actors.rand(callerSeed);
         address to = _actors.rand(toSeed);
 
@@ -1248,9 +1256,12 @@ We still haven't exposed `approve`, `transfer`, and `transferFrom` from our hand
         weth.transfer(to, amount);
     }
 
-    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, uint256 amount)
-        public
-        countCall("transferFrom")
+    function transferFrom(
+        uint256 callerSeed,
+        uint256 fromSeed,
+        uint256 toSeed,
+        uint256 amount
+    ) public countCall("transferFrom")
     {
         address caller = _actors.rand(callerSeed);
         address from = _actors.rand(fromSeed);
@@ -1264,14 +1275,20 @@ We still haven't exposed `approve`, `transfer`, and `transferFrom` from our hand
     }
 ```
 
-Some of these require multiple seed arguments in order to select multiple actors. Note that we call `bound` twice in `transferFrom` to ensure the transfer value is less than the `from` account's balance _and_ that `caller` has a sufficient allowance. If you look carefully at this, you may notice we have a similar problem to `withdraw`: even though we're reuising known callers, most of the time `amount` will be zero, since it's unlikely the `caller` has an approval from the `from` account. (You can use the same call summary process to debug yourself if you're interested).
+Some of these require multiple seed arguments in order to select multiple actors.
 
-Let's add a branch in the handler function that ensures nonzero `transferFrom` amounts at least some of the time, by approving the caller before making the `transferFrom` call:
+Note that we call `bound` twice in `transferFrom` to ensure the transfer value is less than the `from` account's balance _and_ that `caller` has a sufficient allowance. If you look carefully at this, you may notice we have a similar problem to the zero amount issue we just solved for `withdraw`: even though we're reuising known callers, most of the time `amount` will be zero, since it's unlikely the `caller` has an approval from the `from` account. (You can use the same call summary process to debug yourself if you're interested).
+
+Let's add a branch in the handler function that ensures nonzero `transferFrom` amounts at least _some_ of the time, by approving the caller before making the `transferFrom` call. We'll add one more argument to the handler function, a boolean `_approve` that will sometimes pre-approve the caller:
 
 ```solidity
-    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, bool _approve, uint256 amount)
-        public
-        countCall("transferFrom")
+    function transferFrom(
+        uint256 callerSeed,
+        uint256 fromSeed,
+        uint256 toSeed,
+        bool _approve,
+        uint256 amount
+    ) public countCall("transferFrom")
     {
         address caller = _actors.rand(callerSeed);
         address from = _actors.rand(fromSeed);
@@ -1500,6 +1517,8 @@ To undo changes, run:
 $ make clean
 ```
 
+This is a quick and dirty form of [mutation testing](https://en.wikipedia.org/wiki/Mutation_testing), which may be coming as a native Foundry feature [some time soon](https://github.com/foundry-rs/foundry/issues/478)).
+
 ## Accounting for `selfdestruct`
 
 Our tests seem to be pretty comprehensive, but there is one final boss battle before we can call them complete.
@@ -1531,7 +1550,7 @@ This contract will immediately destroy itself at construction time and send any 
 We'll add a handler function to invoke it:
 
 ```solidity
-    function forcePush(uint256 amount) public {
+    function forcePush(uint256 amount) public countCall("forcePush") {
         amount = bound(amount, 0, address(this).balance);
         new ForcePush{ value: amount }(address(weth));
     }
@@ -1595,7 +1614,7 @@ We'll add one more ghost variable to our handler and increment it when we force 
 ```solidity
     uint256 public ghost_forcePushSum;
 
-    function forcePush(uint256 amount) public {
+    function forcePush(uint256 amount) public countCall("forcePush") {
         amount = bound(amount, 0, address(this).balance);
         new ForcePush{ value: amount }(address(weth));
         ghost_forcePushSum += amount;
@@ -1651,5 +1670,6 @@ Success! Next time Crypto Twitter starts spreading FUD about "unbacked WETH," se
 ## More resources
 - [Maple Finance invariant tests repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants)
 - [invariant-examples repo](https://github.com/lucas-manuel/invariant-examples)
+- [Invariant Testing in the Foundry Book](https://book.getfoundry.sh/forge/invariant-testing)
 
-_Thanks to [msolomon44](https://twitter.com/msolomon44), [zachobront](https://twitter.com/zachobront), and [lucasmanuel_eth](https://twitter.com/lucasmanuel_eth) for reviewing earlier drafts of this guide._
+_Thanks to [msolomon44](https://twitter.com/msolomon44), [zachobront](https://twitter.com/zachobront), [gakonst](https://twitter.com/gakonst), and [lucasmanuel_eth](https://twitter.com/lucasmanuel_eth) for reviewing earlier drafts of this guide._
