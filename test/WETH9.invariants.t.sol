@@ -65,4 +65,8 @@ contract WETH9Invariants is Test {
     function assertAccountBalanceLteTotalSupply(address account) external {
         assertLe(weth.balanceOf(account), weth.totalSupply());
     }
+
+    function invariant_call_summary() public view {
+        handler.callSummary();
+    }
 }

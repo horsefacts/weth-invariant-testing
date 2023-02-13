@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import {CommonBase} from "forge-std/Base.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
+import {console} from "forge-std/console.sol";
 import {AddressSet, LibAddressSet} from "../helpers/AddressSet.sol";
 import {WETH9} from "../../src/WETH9.sol";
 
@@ -24,10 +25,18 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     uint256 public ghost_withdrawSum;
     uint256 public ghost_forcePushSum;
 
+    uint256 public ghost_zeroWithdrawals;
+
+    mapping(bytes32 => uint256) public calls;
     AddressSet internal _actors;
 
     modifier captureCaller() {
         _actors.add(msg.sender);
+        _;
+    }
+
+    modifier captureCall(bytes32 key) {
+        calls[key]++;
         _;
     }
 
@@ -36,7 +45,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         deal(address(this), ETH_SUPPLY);
     }
 
-    function deposit(uint256 amount) public captureCaller {
+    function deposit(uint256 amount) public captureCaller captureCall("deposit") {
         amount = bound(amount, 0, address(this).balance);
         _pay(msg.sender, amount);
 
@@ -46,9 +55,10 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_depositSum += amount;
     }
 
-    function withdraw(uint256 callerSeed, uint256 amount) public {
+    function withdraw(uint256 callerSeed, uint256 amount) public captureCall("withdraw") {
         address caller = _actors.rand(callerSeed);
         amount = bound(amount, 0, weth.balanceOf(caller));
+        if (amount == 0) ghost_zeroWithdrawals++;
 
         vm.startPrank(caller);
         weth.withdraw(amount);
@@ -58,7 +68,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_withdrawSum += amount;
     }
 
-    function approve(uint256 callerSeed, uint256 spenderSeed, uint256 amount) public {
+    function approve(uint256 callerSeed, uint256 spenderSeed, uint256 amount) public captureCall("approve") {
         address caller = _actors.rand(callerSeed);
         address spender = _actors.rand(spenderSeed);
 
@@ -66,7 +76,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         weth.approve(spender, amount);
     }
 
-    function transfer(uint256 callerSeed, uint256 toSeed, uint256 amount) public {
+    function transfer(uint256 callerSeed, uint256 toSeed, uint256 amount) public captureCall("transfer") {
         address caller = _actors.rand(callerSeed);
         address to = _actors.rand(toSeed);
 
@@ -76,20 +86,22 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         weth.transfer(to, amount);
     }
 
-    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, uint256 amount) public {
+    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, uint256 amount)
+        public
+        captureCall("transferFrom")
+    {
         address caller = _actors.rand(callerSeed);
         address from = _actors.rand(fromSeed);
         address to = _actors.rand(toSeed);
 
         amount = bound(amount, 0, weth.balanceOf(from));
         amount = bound(amount, 0, weth.allowance(caller, from));
-        _actors.add(to);
 
         vm.prank(caller);
         weth.transferFrom(from, to, amount);
     }
 
-    function sendFallback(uint256 amount) public captureCaller {
+    function sendFallback(uint256 amount) public captureCaller captureCall("sendFallback") {
         amount = bound(amount, 0, address(this).balance);
         _pay(msg.sender, amount);
 
@@ -99,7 +111,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_depositSum += amount;
     }
 
-    function forcePush(uint256 amount) public {
+    function forcePush(uint256 amount) public captureCall("forcePush") {
         amount = bound(amount, 0, address(this).balance);
         new ForcePush{ value: amount }(address(weth));
         ghost_forcePushSum += amount;
@@ -118,6 +130,21 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
     function actors() external view returns (address[] memory) {
         return _actors.addrs;
+    }
+
+    function callSummary() external view {
+        console.log("Call summary:");
+        console.log("-------------------");
+        console.log("deposit", calls["deposit"]);
+        console.log("withdraw", calls["withdraw"]);
+        console.log("approve", calls["approve"]);
+        console.log("transfer", calls["transfer"]);
+        console.log("transferFrom", calls["transferFrom"]);
+        console.log("sendFallback", calls["sendFallback"]);
+        console.log("forcePush", calls["forcePush"]);
+        console.log("-------------------");
+
+        console.log("Zero withdrawals:", ghost_zeroWithdrawals);
     }
 
     function _pay(address to, uint256 amount) internal {
