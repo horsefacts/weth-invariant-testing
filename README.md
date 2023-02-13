@@ -2,7 +2,7 @@
 
 ![Build Status](https://github.com/horsefacts/weth-invariant-testing/actions/workflows/.github/workflows/test.yml/badge.svg?branch=main)
 
-There's been a lot of interest recently in _invariant testing_, a new feature in the [Foundry](https://github.com/foundry-rs/foundry) toolkit, but so far there's not much documentation on getting started with this advanced testing technique. The Maple Finance [invariant test repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants), this [example repo](https://github.com/lucas-manuel/invariant-examples) from [Lucas Manuel](https://twitter.com/lucasmanuel_eth), and a forthcoming section in the [Foundry book](https://github.com/foundry-rs/book/pull/760/files) are all great resources, but it's still tough to get up and running. 
+There's been a lot of interest recently in _invariant testing_, a new feature in the [Foundry](https://github.com/foundry-rs/foundry) toolkit, but so far there's not much documentation on getting started with this advanced testing technique. The Maple Finance [invariant test repo](https://github.com/maple-labs/maple-core-v2/tree/main/tests/invariants), this [example repo](https://github.com/lucas-manuel/invariant-examples) from [Lucas Manuel](https://twitter.com/lucasmanuel_eth), and a forthcoming section in the [Foundry book](https://github.com/foundry-rs/book/pull/760/files) are all great resources, but it's still tough to get up and running.
 
 In this short guide, we'll write invariant tests from the ground up for Wrapped Ether, one of the most important contracts on mainnet.
 
@@ -20,15 +20,15 @@ During a fuzz test run, the fuzzer will call this test with many randomly genera
 
 Invariant tests apply the same idea to the _system as a whole_. Rather than defining properties of specific functions, we define "invariant properties" about a specific contract or system of contracts that should always hold. These may be things like "this vault contract always holds enough tokens to cover all withdrawals," "x * y always equals k in a Uniswap pool," or "this ERC20 token's total supply always equals the sum of all individual balances."
 
-During an invariant test run, the fuzzer goes ham, running against _all_ functions in _all_ contracts (at least until we choose to constrain it). The fuzzer generates random call sequences with random calldata, and checks our defined invariants after every call. If any call sequence breaks a defined invariant, the tests fail.  
+During an invariant test run, the fuzzer goes ham, running against _all_ functions in _all_ contracts (at least until we choose to constrain it). The fuzzer generates random call sequences with random calldata, and checks our defined invariants after every call. If any call sequence breaks a defined invariant, the tests fail.
 
-Invariant tests can be great tools for shaking out invalid assumptions, complex edge cases, and unexpected interactions in a smart contract system. But it can also be challenging to channel the  fuzzer's unconstrained chaos into a suite of meaningful, reliable tests. 
+Invariant tests can be great tools for shaking out invalid assumptions, complex edge cases, and unexpected interactions in a smart contract system. But it can also be challenging to channel the  fuzzer's unconstrained chaos into a suite of meaningful, reliable tests.
 
 ## The WETH contract
 
 We'll be testing the Wrapped Ether contract in this guide.
 
-The Wrapped Ether token allows users to `deposit` and "wrap" native Ether, which is represented as `WETH`, an ERC20 token.  Users who own `WETH` can `withdraw` native Ether by exchanging their `WETH` tokens for Ether at a 1:1 exchange rate. 
+The Wrapped Ether token allows users to `deposit` and "wrap" native Ether, which is represented as `WETH`, an ERC20 token.  Users who own `WETH` can `withdraw` native Ether by exchanging their `WETH` tokens for Ether at a 1:1 exchange rate.
 
 Wrapped Ether is a simple but critical primitive in the Ethereum application layer. It enables applications designed to be composable with ERC20 tokens to use a representation of native Ether, and it mitigates the security risks to end users and smart contract systems associated with native Ether transfers.
 
@@ -79,14 +79,14 @@ contract WETH9 {
     }
 
     function transferFrom(
-        address src, 
-        address dst, 
+        address src,
+        address dst,
         uint256 wad
     ) public returns (bool) {
         require(balanceOf[src] >= wad);
 
         if (
-            src != msg.sender && 
+            src != msg.sender &&
             allowance[src][msg.sender] != type(uint256).max
         ) {
             require(allowance[src][msg.sender] >= wad);
@@ -105,7 +105,7 @@ contract WETH9 {
 
 (I've slightly modified the version above to compile in Solidity 0.8.x).
 
-The [mainnet WETH contract](https://etherscan.io/address/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2) currently holds over 3.9 million Ether, worth over $6.5 billion USD. Any bugs in WETH would be a very big deal. So let's write some invariant tests that verify that the most important properties of WETH really do hold. 
+The [mainnet WETH contract](https://etherscan.io/address/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2) currently holds over 3.9 million Ether, worth over $6.5 billion USD. Any bugs in WETH would be a very big deal. So let's write some invariant tests that verify that the most important properties of WETH really do hold.
 
 ## Getting started
 
@@ -209,7 +209,7 @@ This time,  we can see that the fuzzer made some actual calls to the contract un
 - Calls: the total number of _calls_ the fuzzer made to our contract under test during this test run. This is equal to the number of `runs` times the `depth` of each call sequence defined in `foundry.toml`.
 - Reverts: the number of calls that reverted in this test run. In this case, around 58% of the randomly generated calls to our contract reverted.
 
-Of course, in the real world the WETH supply is not always zero. So why does our test pass? A unit test might help clarify. 
+Of course, in the real world the WETH supply is not always zero. So why does our test pass? A unit test might help clarify.
 
 A nice feature of Foundry is that it's possible to define unit and invariant tests in the same test class. This can be useful for quick explorations like this, or for concretizing and testing a failed fuzz/invariant result to understand why it failed. Add this right after our invariant test function:
 
@@ -222,7 +222,7 @@ A nice feature of Foundry is that it's possible to define unit and invariant tes
 ```
 
 ```bash
-$ forge test -m test_zeroDeposit 
+$ forge test -m test_zeroDeposit
 
 Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
 [PASS] test_zeroDeposit() (gas: 11071)
@@ -238,7 +238,7 @@ So here's what's happening under the hood:
 - The fuzzer generates random call sequences and calldata, but does not fuzz `msg.value`, so all calls to the WETH contract have zero value. Since WETH is only created when a caller deposits native ETH, no ETH enters the WETH contract and no WETH tokens are ever created.
 - The WETH balance remains zero and our invariant holds.
 
-This kind of "open testing"—allowing the fuzzer to wreak havoc on all contracts, all methods, and all arguments at once—can be useful in some scenarios, and it's usually a good place to start when building up an invariant test suite. But you'll often want to simulate specific conditions, like a caller sending along native ETH to make a WETH `deposit`, more precisely. 
+This kind of "open testing"—allowing the fuzzer to wreak havoc on all contracts, all methods, and all arguments at once—can be useful in some scenarios, and it's usually a good place to start when building up an invariant test suite. But you'll often want to simulate specific conditions, like a caller sending along native ETH to make a WETH `deposit`, more precisely.
 
 There is also a probabilistic trade-off between exploring more random call sequences and finding "meaningful" sequences that actually test our invariants. Exposing more contracts and functions to the fuzzer generates much more "surface area" to fuzz that _could_ expose interesting ways to break the invariants. But if 99% of those sequences revert because their arguments or ordering are unrealistic, we might not really be testing our invariants in a useful way at all.
 
@@ -246,7 +246,7 @@ In order to simulate native Ether transfers and test the conditions we really ca
 
 ## Handlers
 
-A _handler_ is a wrapper contract that we'll use to manage interactions with our contract under test. Rather than expose the `WETH9` functions directly to the fuzzer, we'll instead point the fuzzer at our _handler_ contract and add functions to the handler that delegate to `WETH9`. This lets us use standard Forge cheatcodes and helpers like `vm.prank` and `deal` to set up tests with the conditions we care about. 
+A _handler_ is a wrapper contract that we'll use to manage interactions with our contract under test. Rather than expose the `WETH9` functions directly to the fuzzer, we'll instead point the fuzzer at our _handler_ contract and add functions to the handler that delegate to `WETH9`. This lets us use standard Forge cheatcodes and helpers like `vm.prank` and `deal` to set up tests with the conditions we care about.
 
 A handler is just another helper contract. Typically, I pass in the contract under test as a constructor argument. Let's add the following in `test/handlers/Handler.sol`:
 
@@ -262,7 +262,7 @@ contract Handler {
 }
 ```
 
-A word of warning: as soon as we introduce a handler, we are starting to introduce assumptions about the system under test. It's necessary to constrain the system in order to test it meaningfully, but it's also important to stop and consider the assumptions we're making along the way, lest we end up testing a system that's nothing like the real world at all. As we build out our tests, we should make sure we think about each assumption that we add along the way. 
+A word of warning: as soon as we introduce a handler, we are starting to introduce assumptions about the system under test. It's necessary to constrain the system in order to test it meaningfully, but it's also important to stop and consider the assumptions we're making along the way, lest we end up testing a system that's nothing like the real world at all. As we build out our tests, we should make sure we think about each assumption that we add along the way.
 
 With that caveat in mind, let's start building out our handler contract. We'll start with a `deposit` function that calls through to `weth.deposit()` and passes on a fuzzed `amount` as  `msg.value`:
 
@@ -275,7 +275,7 @@ contract Handler {
     constructor(WETH9 _weth) {
         weth = _weth;
     }
-    
+
     function deposit(uint256 amount) public {
         weth.deposit{ value: amount }();
     }
@@ -298,14 +298,14 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         weth = _weth;
         deal(address(this), 10 ether);
     }
-    
+
     function deposit(uint256 amount) public {
         weth.deposit{ value: amount }();
     }
 }
 ```
 
-Over in the tests, we'll need to create our handler contract in `setUp` and configure the fuzzer to test its functions rather than call `WETH9` directly. The helper functions `targetContract(address)` and `excludeContract(address)` in`forge-std/StdInvariant` allow us to include and exclude contracts from invariant fuzzing. 
+Over in the tests, we'll need to create our handler contract in `setUp` and configure the fuzzer to test its functions rather than call `WETH9` directly. The helper functions `targetContract(address)` and `excludeContract(address)` in`forge-std/StdInvariant` allow us to include and exclude contracts from invariant fuzzing.
 
 ```solidity
 import {Handler} from "./handlers/Handler.sol";
@@ -316,7 +316,7 @@ contract WETH9Invariants is Test {
 
     function setUp() public {
         weth = new WETH9();
-        handler = new Handler(weth); 
+        handler = new Handler(weth);
 
         targetContract(address(handler));
     }
@@ -340,9 +340,9 @@ Failing tests:
 Encountered 1 failing test in test/WETH9.invariants.t.sol:WETH9Invariants
 [FAIL. Reason: Assertion failed.]
         [Sequence]
-                sender=0x00000000000000000000000000000000000000a4 
+                sender=0x00000000000000000000000000000000000000a4
                 addr=[test/handlers/Handler.sol:Handler]
-                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b
                 calldata=deposit(uint256),
                 args=[65]
 
@@ -379,7 +379,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 }
 ```
 
-And let's update our invariant to describe this property: 
+And let's update our invariant to describe this property:
 
 ```solidity
     // ETH can only be wrapped into WETH, WETH can only
@@ -388,7 +388,7 @@ And let's update our invariant to describe this property:
     // equal the total ETH_SUPPLY.
     function invariant_conservationOfETH() public {
         assertEq(
-          handler.ETH_SUPPLY(), 
+          handler.ETH_SUPPLY(),
           address(handler).balance + weth.totalSupply()
         );
     }
@@ -491,9 +491,9 @@ We'll eventually want to add transfers and approvals to our handler, to ensure t
 
 Let's move on to a second invariant: _solvency_.
 
-## Solvency and ghost variables 
+## Solvency and ghost variables
 
-It's pretty important that the WETH contract's native Ether balance is always enough to cover all possible withdrawals from the contract. Since WETH and native Ether are convertible 1:1, the `WETH9` contract's Ether balance should always equal the sum of all deposits. 
+It's pretty important that the WETH contract's native Ether balance is always enough to cover all possible withdrawals from the contract. Since WETH and native Ether are convertible 1:1, the `WETH9` contract's Ether balance should always equal the sum of all deposits.
 
 We can test this invariant in a couple ways: at a high level, we can look at all deposits minus all withdrawals from the contract. At a lower level, we can sum up the individual balances of each WETH token owner. Let's look at each in turn. Both of these approaches will require a new technique, _ghost variables_.
 
@@ -505,33 +505,33 @@ Let's add a `ghost_depositSum` state variable to our contract, and increase it e
     uint256 public ghost_depositSum;
 
     function deposit(uint256 amount) public {
-        amount = bound(amount, 0, address(this).balance); 
+        amount = bound(amount, 0, address(this).balance);
         weth.deposit{ value: amount }();
         ghost_depositSum += amount;
     }
-    
+
 ```
 
-I like to prefix these variable names with `ghost_`, but that's just a convention. There's nothing special about these variables besides their purpose. Otherwise, they are standard Solidity state variables in our helper contract. 
+I like to prefix these variable names with `ghost_`, but that's just a convention. There's nothing special about these variables besides their purpose. Otherwise, they are standard Solidity state variables in our helper contract.
 
-While we're at it, let's also add `ghost_withdrawSum` to track all withdrawals. We expect the native Ether balance of the WETH contract to be equal to all the deposits minus all the withdrawals. 
+While we're at it, let's also add `ghost_withdrawSum` to track all withdrawals. We expect the native Ether balance of the WETH contract to be equal to all the deposits minus all the withdrawals.
 
 ```solidity
     uint256 public ghost_depositSum;
     uint256 public ghost_withdrawSum;
 
     function deposit(uint256 amount) public {
-        amount = bound(amount, 0, address(this).balance); 
+        amount = bound(amount, 0, address(this).balance);
         weth.deposit{ value: amount }();
         ghost_depositSum += amount;
     }
-    
+
     function withdraw(uint256 amount) public {
-        amount = bound(amount, 0, weth.balanceOf(address(this))); 
+        amount = bound(amount, 0, weth.balanceOf(address(this)));
         weth.withdraw(amount);
         ghost_withdrawSum += amount;
     }
-    
+
 ```
 
 We could just as easily decrement `ghost_depositSum` on withdrawals, but I prefer to use separate variables for two reasons. First, it's nice to have these accounting values available as separate properties. Often, building up a good invariant test suite requires defining properties in terms of intermediate values like "all deposits" and "all withdrawals". I find that exposing these explicitly helps me think about the "building blocks" available to test against when defining new invariants.
@@ -541,12 +541,12 @@ Second, I think it's good to be wary about any complex or conditional behavior i
 Let's add our new invariant:
 
 ```solidity
-    // The WETH contract's Ether balance should always 
-    // equal the sum of all the individual deposits 
+    // The WETH contract's Ether balance should always
+    // equal the sum of all the individual deposits
     // minus all the individual withdrawals
     function invariant_solvencyDeposits() public {
         assertEq(
-          address(weth).balance, 
+          address(weth).balance,
           handler.ghost_depositSum() - handler.ghost_withdrawSum()
         );
     }
@@ -559,18 +559,18 @@ $ forge test
         [Sequence]
                 sender=0x0000000000000000000000000000000000000c88
                   addr=[test/handlers/Handler.sol:Handler]
-                       0x2e234dae75c793f67a35089c9d99245e1c58470b 
-                  calldata=deposit(uint256), 
+                       0x2e234dae75c793f67a35089c9d99245e1c58470b
+                  calldata=deposit(uint256),
                   args=[826074471]
-                sender=0x0000000000000000000000000000000000000ffb 
+                sender=0x0000000000000000000000000000000000000ffb
                   addr=[test/handlers/Handler.sol:Handler]
-                       0x2e234dae75c793f67a35089c9d99245e1c58470b 
-                  calldata=deposit(uint256), 
+                       0x2e234dae75c793f67a35089c9d99245e1c58470b
+                  calldata=deposit(uint256),
                   args=[1]
-                sender=0xeaae00d9e5544c3fd4fc519f81e2a4747920f369 
+                sender=0xeaae00d9e5544c3fd4fc519f81e2a4747920f369
                   addr=[test/handlers/Handler.sol:Handler]
-                       0x2e234dae75c793f67a35089c9d99245e1c58470b                 
-                  calldata=sendFallback(uint256), 
+                       0x2e234dae75c793f67a35089c9d99245e1c58470b
+                  calldata=sendFallback(uint256),
                   args=[1007]
 
  invariant_solvencyDeposits() (runs: 1000, calls: 14988, reverts: 0)
@@ -606,19 +606,19 @@ Let's move on and test another solvency invariant: the Ether balance of the WETH
     function invariant_solvencyBalances() public {
         uint256 sumOfBalances = ???
         assertEq(
-            address(weth).balance, 
+            address(weth).balance,
             sumOfBalances
         );
     }
 ```
 
-So how can we track the sum of individual balances? We _could_ add more complicated ghost variables to our handler, perhaps something like a mapping that tracks each caller's balance, increments on deposits, decrements on withdrawals, and updates the sender and receiver on transfers. But by adding this, we'd basically be replicating the ERC20 logic included in the WETH contract! 
+So how can we track the sum of individual balances? We _could_ add more complicated ghost variables to our handler, perhaps something like a mapping that tracks each caller's balance, increments on deposits, decrements on withdrawals, and updates the sender and receiver on transfers. But by adding this, we'd basically be replicating the ERC20 logic included in the WETH contract!
 
 WETH is simple enough that we could probably get away with it this time, but this is a dangerous path: if any of our assumptions are wrong in both the contract under test _and_ in our ghost variable logic that replicates it, we will simply be replicating bugs in the implementation in our tests.
 
 In general, I think it's a good principle to rely on external state from the contract under test whenever possible. And it _is_ possible here: we can tally up the balance of each user by
 
-1. Saving the address of every caller 
+1. Saving the address of every caller
 2. iterating over each address and retrieving the `weth.balanceOf` the caller
 3. adding up all the balances
 
@@ -651,7 +651,7 @@ We can start by simply passing through `msg.sender` using `vm.prank` before we c
 
         vm.prank(msg.sender);
         weth.withdraw(amount);
-        
+
         ghost_withdrawSum += amount;
     }
 
@@ -660,7 +660,7 @@ We can start by simply passing through `msg.sender` using `vm.prank` before we c
 
         vm.prank(msg.sender);
         (bool success,) = address(weth).call{value: amount}("");
-        
+
         require(success, "sendFallback failed");
         ghost_depositSum += amount;
     }
@@ -686,7 +686,7 @@ We'll add a `_pay` helper to make transfers before tests that need them:
 
         vm.prank(msg.sender);
         weth.withdraw(amount);
-        
+
         ghost_withdrawSum += amount;
     }
 
@@ -696,7 +696,7 @@ We'll add a `_pay` helper to make transfers before tests that need them:
 
         vm.prank(msg.sender);
         (bool success,) = address(weth).call{value: amount}("");
-        
+
         require(success, "sendFallback failed");
         ghost_depositSum += amount;
     }
@@ -709,7 +709,7 @@ We'll add a `_pay` helper to make transfers before tests that need them:
 
 Finally, we need to make two changes in `withdraw`. First, we need to update the `bound` condition in `withdraw` not to exceed the `msg.sender`'s WETH balance on withdrawals, rather than the handler contract's total balance. (Otherwise many of these calls will revert).
 
-Second, we need to send the withdrawn amount back to the handler using `_pay`, to keep all Ether in our closed two-contract system. (Otherwise, it will remain with `msg.sender`):  
+Second, we need to send the withdrawn amount back to the handler using `_pay`, to keep all Ether in our closed two-contract system. (Otherwise, it will remain with `msg.sender`):
 
 ```solidity
     function deposit(uint256 amount) public {
@@ -729,7 +729,7 @@ Second, we need to send the withdrawn amount back to the handler using `_pay`, t
         weth.withdraw(amount);
         _pay(address(this), amount);
         vm.stopPrank();
-        
+
         ghost_withdrawSum += amount;
     }
 
@@ -739,7 +739,7 @@ Second, we need to send the withdrawn amount back to the handler using `_pay`, t
 
         vm.prank(msg.sender);
         (bool success,) = address(weth).call{value: amount}("");
-        
+
         require(success, "sendFallback failed");
         ghost_depositSum += amount;
     }
@@ -772,7 +772,7 @@ struct AddressSet {
 ```
 
 We can then define a [library](https://docs.soliditylang.org/en/latest/contracts.html#libraries) that adds some behavior to this data structure. `add(address)` will push an address into the `saved` array only if it has not already been seen. `contains(address)` returns whether an address is in the set, and `count()` returns the total number of addresses in the set:
-	
+
 ```solidity
 library LibAddressSet {
     function add(AddressSet storage s, address addr) internal {
@@ -783,7 +783,7 @@ library LibAddressSet {
     }
 
     function contains(
-      AddressSet storage s, 
+      AddressSet storage s,
       address addr
     ) internal view returns (bool) {
         return s.saved[addr];
@@ -807,7 +807,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
     function actors() external returns (address[] memory) {
       return _actors.addrs;
-    }	
+    }
 }
 ```
 
@@ -832,7 +832,7 @@ Now we can load the `actors()` in our test, add up their balances, and make our 
             sumOfBalances += weth.balanceOf(actors[i]);
         }
         assertEq(
-            address(weth).balance, 
+            address(weth).balance,
             sumOfBalances
         );
     }
@@ -857,7 +857,7 @@ Did you know you can pass [function types](https://docs.soliditylang.org/en/v0.8
 library LibAddressSet {
 
     function forEach(
-        AddressSet storage s, 
+        AddressSet storage s,
         function(address) external returns (address[] memory) func
     ) internal {
         for (uint256 i; i < s.addrs.length; ++i) {
@@ -866,8 +866,8 @@ library LibAddressSet {
     }
 
     function reduce(
-        AddressSet storage s, 
-        uint256 acc, 
+        AddressSet storage s,
+        uint256 acc,
         function(uint256,address) external returns (uint256) func
     )
         internal
@@ -893,7 +893,7 @@ To use these iterators from our tests, we can expose them from the handler:
     }
 
     function reduceActors(
-        uint256 acc, 
+        uint256 acc,
         function(uint256,address) external returns (uint256) func
     )
         public
@@ -911,26 +911,26 @@ Now, we can rewrite our test and tally up balances using a reducer:
     // at least as much as the sum of individual balances
     function invariant_solvencyBalances() public {
         uint256 sumOfBalances = handler.reduceActors(
-          0, 
+          0,
           this.accumulateBalance
         );
         assertEq(
-            address(weth).balance, 
+            address(weth).balance,
             sumOfBalances
         );
     }
 
     function accumulateBalance(
-      uint256 balance, 
+      uint256 balance,
       address caller
     ) external view returns (uint256) {
         return balance + weth.balanceOf(caller);
     }
 ```
 
-Cool trick, right? 
+Cool trick, right?
 
-There's one more change we need to make in the test contract to make this all work. Now that we've added some external functions to our handler to expose our iterators, we want to exclude them from fuzzing. We need to use the more complex `targetSelector` helper from `forge-std/StdInvariants` to specify the exact selectors we want the fuzzer to target and exclude everything else: 
+There's one more change we need to make in the test contract to make this all work. Now that we've added some external functions to our handler to expose our iterators, we want to exclude them from fuzzing. We need to use the more complex `targetSelector` helper from `forge-std/StdInvariants` to specify the exact selectors we want the fuzzer to target and exclude everything else:
 
 ```solidity
     function setUp() public {
@@ -943,7 +943,7 @@ There's one more change we need to make in the test contract to make this all wo
         selectors[2] = Handler.sendFallback.selector;
 
         targetSelector(FuzzSelector({
-            addr: address(handler), 
+            addr: address(handler),
             selectors: selectors
         }));
 
@@ -985,34 +985,311 @@ Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
 Test result: ok. 4 passed; 0 failed; finished in 5.80s
 ```
 
-## Including transfers
+## Debugging with call summaries
 
-We still haven't exposed `approve`, `transfer`, and `transferFrom` from our handler. Let's do that now. 
+Earlier, I mentioned the importance of double checking all our assumptions as we build out our handler contract. Every time we constrain a parameter in our test handler, we may be making changes that interact in unexpected ways. Our handler's `withdraw` function is a good example. See anything that could go wrong here?
 
 ```solidity
-    function approve(address spender, uint256 amount) public {
+    function withdraw(uint256 amount) public {
+        amount = bound(amount, 0, weth.balanceOf(msg.sender));
+
+        vm.startPrank(msg.sender);
+        weth.withdraw(amount);
+        _pay(address(this), amount);
+        vm.stopPrank();
+
+        ghost_withdrawSum += amount;
+    }
+```
+
+It's a subtle bug, but here'san explanation:
+- Since the possibility space for a random `address` is so large, most of the time the fuzzer will choose a new, never before seen address as `msg.sender`.
+- Since `msg.sender` won't yet have a balance, the `bound` statement will set the withdrawal amount to zero.
+- A close look at the `WETH` contract shows that it will allow zero withdrawals.
+
+```solidity
+    function withdraw(uint256 wad) public {
+        require(balanceOf[msg.sender] >= wad);
+        balanceOf[msg.sender] -= wad;
+        payable(msg.sender).transfer(wad);
+        emit Withdrawal(msg.sender, wad);
+    }
+```
+
+It's very likely that most of the `withdraw` calls in our test are zero value withdrawals that don't really exercise the invariants we're trying to test! We may get lucky from time to time by running our tests with lots of runs and a high depth, but we should probably constrain our tests even further.
+
+One technique we can use to explore whether this is a real problem is a _call summary_ that counts up calls to each of our handler functions and prints a summary at the end of a test run. Let's add a `calls` mapping to our handler that will count each call to our handler functions, a `countCall(bytes32)` modifier to log them, and a `callSummary()` function that will print a summary:
+
+```solidity
+import {console} from "forge-std/console.sol";
+
+contract Handler is CommonBase, StdCheats, StdUtils {
+
+    mapping(bytes32 => uint256) public calls;
+
+    modifier countCall(bytes32 key) {
+        calls[key]++;
+        _;
+    }
+
+    function callSummary() external view {
+        console.log("Call summary:");
+        console.log("-------------------");
+        console.log("deposit", calls["deposit"]);
+        console.log("withdraw", calls["withdraw"]);
+        console.log("sendFallback", calls["sendFallback"]);
+    }
+}
+```
+
+We'll apply the modifier to each handler function exposed to the fuzzer and pass the name of the function:
+
+```solidity
+    function deposit(uint256 amount) public countCaller countCall("deposit") {
+        amount = bound(amount, 0, address(this).balance);
+        _pay(msg.sender, amount);
+
         vm.prank(msg.sender);
+        weth.deposit{value: amount}();
+
+        ghost_depositSum += amount;
+    }
+
+    function withdraw(uint256 callerSeed, uint256 amount) public countCall("withdraw") {
+        address caller = _actors.rand(callerSeed);
+        amount = bound(amount, 0, weth.balanceOf(caller));
+        if (amount == 0) ghost_zeroWithdrawals++;
+
+        vm.startPrank(caller);
+        weth.withdraw(amount);
+        _pay(address(this), amount);
+        vm.stopPrank();
+
+        ghost_withdrawSum += amount;
+    }
+```
+
+Finally, in our invariant tests, we can add an `invariant_callSummary()` function. Since this function is prefixed with `invariant_`, it will run as an invariant test, but we won't use it to make any assertions, just to log out the data we collect:
+
+```solidity
+    function invariant_callSummary() public view {
+        handler.callSummary();
+    }
+```
+
+If we run our tests with the `-vv` flag, we'll see the summary result:
+
+```bash
+$ forge test -vv -m invariant_callSummary
+Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
+[PASS] invariant_callSummary()
+(runs: 2000, calls: 30000, reverts: 2)
+Logs:
+  Call summary:
+  -------------------
+  deposit 5
+  withdraw 6
+  sendFallback 4
+
+Test result: ok. 1 passed; 0 failed; finished in 11.54s
+```
+
+Looks like it worked, although the result might look odd. How should we interpret these results?
+
+Although we performed 2000 runs, the summary printed here is a snapshot of calls made during the _final run_. The total number of calls in our summary should always be the same as the `depth` parameter set for invariant tests in `foundry.toml`. In our case, the depth is set to 15. So in our last run, the fuzzer made 5 calls to `deposit`, 6 calls to `withdraw`, and 4 calls to `sendFallback`, a total of 15 calls.
+
+This kind of snapshot can be a helpful way to observe the distribution of calls during a fuzz run and help explore and debug our tests themselves.
+
+So, are we actually ever exercising a nonzero `withdraw` in our tests? Let's find out. We can count up zero withdrawals using a ghost variable, update `withdraw` to increment our zero withdrawal counter, and add it to our call summary:
+
+```solidity
+    uint256 public ghost_zeroWithdrawals;
+
+    function withdraw(uint256 amount) public countCall("withdraw") {
+        amount = bound(amount, 0, weth.balanceOf(msg.sender));
+        if (amount == 0) ghost_zeroWithdrawals++;
+
+        vm.startPrank(msg.sender);
+        weth.withdraw(amount);
+        _pay(address(this), amount);
+        vm.stopPrank();
+
+        ghost_withdrawSum += amount;
+    }
+
+    function callSummary() external view {
+        console.log("Call summary:");
+        console.log("-------------------");
+        console.log("deposit", calls["deposit"]);
+        console.log("withdraw", calls["withdraw"]);
+        console.log("sendFallback", calls["sendFallback"]);
+        console.log("-------------------");
+
+        console.log("Zero withdrawals:", ghost_zeroWithdrawals);
+    }
+```
+
+Run our tests:
+
+```bash
+Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
+[PASS] invariant_callSummary() (runs: 2000, calls: 30000, reverts: 13)
+Logs:
+  Call summary:
+  -------------------
+  deposit 8
+  withdraw 2
+  sendFallback 5
+  -------------------
+  Zero withdrawals: 2
+
+Test result: ok. 1 passed; 0 failed; finished in 9.40s
+```
+
+Both calls to `withdraw` were zero withdrawals. Let's crank up the `depth` to `100` calls:
+
+```bash
+Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
+[PASS] invariant_callSummary() (runs: 2000, calls: 200000, reverts: 24)
+Logs:
+  Call summary:
+  -------------------
+  deposit 31
+  withdraw 33
+  sendFallback 36
+  -------------------
+  Zero withdrawals: 33
+
+Test result: ok. 1 passed; 0 failed; finished in 192.91s
+```
+
+All our calls were still zero withdrawals! We'll need to constrain our tests a bit further to test our invariants in a meaningful way.
+
+## Reusing actors
+
+Let's update the way we're using and tracking actors. Rather than any random address calling `withdraw`, let's ensure that the caller of `withdraw` is an address in the `_actors` set. This should prevent zero withdrawals from random addresses.
+
+To start, we'll add a `rand(uint256)` function to `LibAddressSet` that takes a random seed and returns an actor address from the stored set. (If we don't want tests to revert when we call `rand()` before an address has been saved, we can hardcode a return address for the case when the set is empty):
+
+```solidity
+library LibAddressSet {
+
+    function rand(AddressSet storage s, uint256 seed) internal view returns (address) {
+        if (s.addrs.length > 0) {
+            return s.addrs[seed % s.addrs.length];
+        } else {
+            return address(0xc0ffee);
+        }
+    }
+}
+```
+
+Next, let's remove `msg.sender` from `withdraw` and update it to instead select a random caller from our `_actors` set. To do so, we'll add an extra `uint256 callerSeed` argument to the handler function:
+
+```solidity
+    function withdraw(uint256 callerSeed, uint256 amount) public countCall("withdraw") {
+        address caller = _actors.rand(callerSeed);
+        amount = bound(amount, 0, weth.balanceOf(caller));
+        if (amount == 0) ghost_zeroWithdrawals++;
+
+        vm.startPrank(caller);
+        weth.withdraw(amount);
+        _pay(address(this), amount);
+        vm.stopPrank();
+
+        ghost_withdrawSum += amount;
+    }
+```
+
+Now, the fuzzer will generate a random `callerSeed`, we'll use it to retrieve a random, but known address from our `_actors` set, and use this address as the caller using `prank` when we call the `WETH` contract.
+
+Let's look at the call summary:
+
+```bash
+$ forge test -vv -m invariant_callSummary
+
+Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
+[PASS] invariant_callSummary()
+(runs: 3, calls: 300, reverts: 0)
+Logs:
+  Call summary:
+  -------------------
+  deposit 31
+  withdraw 35
+  sendFallback 34
+  -------------------
+  Zero withdrawals: 9
+
+Test result: ok. 1 passed; 0 failed; finished in 40.61ms
+```
+
+Looking better! Note that there will still be _some_ zero withdrawals, since it's also possible to make zero value deposits. We could choose to constrain the tests further to prevent these, too, but as long as we're regularly generating runs with mostly nonzero withdrawals, we're probably OK for now.
+
+## Including transfers
+
+We still haven't exposed `approve`, `transfer`, and `transferFrom` from our handler. Let's do that now. We'll want to constrain these to known actors like we did with `withdraw`:
+
+```solidity
+    function approve(uint256 callerSeed, uint256 spenderSeed, uint256 amount) public countCall("approve") {
+        address caller = _actors.rand(callerSeed);
+        address spender = _actors.rand(spenderSeed);
+
+        vm.prank(caller);
         weth.approve(spender, amount);
     }
 
-    function transfer(address to, uint256 amount) public {
-        amount = bound(amount, 0, weth.balanceOf(msg.sender));
-        _actors.add(to);
+    function transfer(uint256 callerSeed, uint256 toSeed, uint256 amount) public countCall("transfer") {
+        address caller = _actors.rand(callerSeed);
+        address to = _actors.rand(toSeed);
 
-        vm.prank(msg.sender);
+        amount = bound(amount, 0, weth.balanceOf(caller));
+
+        vm.prank(caller);
         weth.transfer(to, amount);
     }
 
-    function transferFrom(address from, address to, uint256 amount) public {
-        amount = bound(amount, 0, weth.balanceOf(from));
-        _actors.add(to);
+    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, uint256 amount)
+        public
+        countCall("transferFrom")
+    {
+        address caller = _actors.rand(callerSeed);
+        address from = _actors.rand(fromSeed);
+        address to = _actors.rand(toSeed);
 
-        vm.prank(msg.sender);
+        amount = bound(amount, 0, weth.balanceOf(from));
+        amount = bound(amount, 0, weth.allowance(caller, from));
+
+        vm.prank(caller);
         weth.transferFrom(from, to, amount);
     }
 ```
 
-Note that we need to add the _destination_ addresses (the `to` argument in `transfer` and `transferFrom`) to our `_actors` set in order to keep track of all the known actors that might have balances in the system. We can use `add(address)` to add these addresses to the set.
+Some of these require multiple seed arguments in order to select multiple actors. Note that we call `bound` twice in `transferFrom` to ensure the transfer value is less than the `from` account's balance _and_ that `caller` has a sufficient allowance. If you look carefully at this, you may notice we have a similar problem to `withdraw`: even though we're reuising known callers, most of the time `amount` will be zero, since it's unlikely the `caller` has an approval from the `from` account. (You can use the same call summary process to debug yourself if you're interested).
+
+Let's add a branch in the handler function that ensures nonzero `transferFrom` amounts at least some of the time, by approving the caller before making the `transferFrom` call:
+
+```solidity
+    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, bool _approve, uint256 amount)
+        public
+        countCall("transferFrom")
+    {
+        address caller = _actors.rand(callerSeed);
+        address from = _actors.rand(fromSeed);
+        address to = _actors.rand(toSeed);
+
+        amount = bound(amount, 0, weth.balanceOf(from));
+
+        if (_approve) {
+            vm.prank(from);
+            weth.approve(caller, amount);
+        } else {
+            amount = bound(amount, 0, weth.allowance(caller, from));
+        }
+
+        vm.prank(caller);
+        weth.transferFrom(from, to, amount);
+    }
+```
 
 Don't forget to add these new selectors to our configuration in `setUp`:
 
@@ -1031,7 +1308,7 @@ Don't forget to add these new selectors to our configuration in `setUp`:
 
         targetSelector(
           FuzzSelector({
-            addr: address(handler), 
+            addr: address(handler),
             selectors: selectors
           }
         ));
@@ -1049,7 +1326,7 @@ Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
 Test result: ok. 4 passed; 0 failed; finished in 5.87s
 ```
 
-## Testing our tests 
+## Testing our tests
 
 We've changed quite a lot of supporting infrastructure and our tests still pass. But are we sure we can really trust them? Unlike unit tests, where mapping one specific input to one expected output is usually pretty clear, I find that invariant tests can sometimes be tricky and accidentally pass when we've introduced an incorrect assumption about the system or a condition that is vacuously true.
 
@@ -1072,27 +1349,27 @@ Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
         [Sequence]
                 sender=0x849a5a123d8d365eef30374417ef4fcbba5a9781
                 addr=[test/handlers/Handler.sol:Handler]
-                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
-                calldata=withdraw(uint256), 
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b
+                calldata=withdraw(uint256),
                 args=[365161364]
-                sender=0xcbac49e135a0340b2fca24685962c08ed3aa81c7 
+                sender=0xcbac49e135a0340b2fca24685962c08ed3aa81c7
                 addr=[test/handlers/Handler.sol:Handler]
-                     0x2e234dae75c793f67a35089c9d99245e1c58470b                           
-                calldata=sendFallback(uint256), 
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b
+                calldata=sendFallback(uint256),
                 args=[0]
 
  invariant_depositorBalances() (runs: 2000, calls: 29974, reverts: 3)
 [FAIL. Reason: Assertion failed.]
         [Sequence]
-                sender=0x000000000000000000000000000000000000006a 
+                sender=0x000000000000000000000000000000000000006a
                 addr=[test/handlers/Handler.sol:Handler]
-                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
-                calldata=approve(address,uint256), 
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b
+                calldata=approve(address,uint256),
                 args=[0x6D50393ED4ed2f7A64e40bdCA11E430dC276bbf3, 26589664]
-                sender=0x0f9be7012c9f187334111c3a4f6811e6132e4815 
+                sender=0x0f9be7012c9f187334111c3a4f6811e6132e4815
                 addr=[test/handlers/Handler.sol:Handler]
                     0x2e234dae75c793f67a35089c9d99245e1c58470b
-                calldata=sendFallback(uint256), 
+                calldata=sendFallback(uint256),
                 args=[2936]
 
  invariant_solvencyBalances() (runs: 2000, calls: 29974, reverts: 3)
@@ -1113,13 +1390,13 @@ index cd55b98..ccb40cb 100644
 +++ b/src/WETH9.sol
 @@ -33,7 +33,7 @@ contract WETH9 {
      }
- 
+
      function deposit() public payable {
 -        balanceOf[msg.sender] += msg.value;
 +        balanceOf[msg.sender] += 1;
          emit Deposit(msg.sender, msg.value);
      }
- 
+
 ```
 
 Let's add a few more bug patches. We'll alter `withdraw` to send back only 1 wei:
@@ -1148,11 +1425,11 @@ index cd55b98..6e74bd5 100644
 +++ b/src/WETH9.sol
 @@ -29,7 +29,6 @@ contract WETH9 {
      mapping(address => mapping(address => uint256)) public allowance;
- 
+
      fallback() external payable {
 -        deposit();
      }
- 
+
      function deposit() public payable {
 ```
 
@@ -1165,7 +1442,7 @@ index cd55b98..26cec99 100644
 +++ b/src/WETH9.sol
 @@ -59,15 +59,8 @@ contract WETH9 {
      }
- 
+
      function transferFrom(address src, address dst, uint256 wad) public returns (bool) {
 -        require(balanceOf[src] >= wad);
 -
@@ -1178,11 +1455,11 @@ index cd55b98..26cec99 100644
 -        balanceOf[dst] += wad;
 +        balanceOf[src] -= wad;
 +        balanceOf[dst] += 1;
- 
+
          emit Transfer(src, dst, wad);v
 ```
 
-If we `git apply` each patch in turn and verify that our tests really do catch each artificial bug, we can be pretty confident that they are working: 
+If we `git apply` each patch in turn and verify that our tests really do catch each artificial bug, we can be pretty confident that they are working:
 
 ```bash
 $ git apply bugs/bug2.patch
@@ -1223,9 +1500,9 @@ To undo changes, run:
 $ make clean
 ```
 
-## Accounting for `selfdestruct` 
+## Accounting for `selfdestruct`
 
-Our tests seem to be pretty comprehensive, but there is one final boss battle before we can call them complete. 
+Our tests seem to be pretty comprehensive, but there is one final boss battle before we can call them complete.
 
 There is one intuitive invariant that famously  _does not hold_ for the WETH contract. It has to do with the way `WETH9` calculates `totalSupply()`:
 
@@ -1290,19 +1567,19 @@ Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
 [PASS] invariant_depositorBalances() (runs: 5000, calls: 74986, reverts: 9)
 [FAIL. Reason: Assertion failed.]
         [Sequence]
-                sender=0x0000000000000000000000000000000000000b69 
+                sender=0x0000000000000000000000000000000000000b69
                 addr=[test/handlers/Handler.sol:Handler]
-                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
-                calldata=forcePush(uint256), 
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b
+                calldata=forcePush(uint256),
                 args=[2250]
 
  invariant_solvencyBalances() (runs: 5000, calls: 74986, reverts: 9)
 [FAIL. Reason: Assertion failed.]
         [Sequence]
-                sender=0x0000000000000000000000000000000000000b69 
+                sender=0x0000000000000000000000000000000000000b69
                 addr=[test/handlers/Handler.sol:Handler]
-                     0x2e234dae75c793f67a35089c9d99245e1c58470b 
-                calldata=forcePush(uint256), 
+                     0x2e234dae75c793f67a35089c9d99245e1c58470b
+                calldata=forcePush(uint256),
                 args=[2250]
 
  invariant_solvencyDeposits() (runs: 5000, calls: 74986, reverts: 9)
@@ -1317,7 +1594,7 @@ We'll add one more ghost variable to our handler and increment it when we force 
 
 ```solidity
     uint256 public ghost_forcePushSum;
-    
+
     function forcePush(uint256 amount) public {
         amount = bound(amount, 0, address(this).balance);
         new ForcePush{ value: amount }(address(weth));
@@ -1334,9 +1611,9 @@ And update our invariants to account for this extra Ether:
     // force-pushed Ether in the contract
     function invariant_solvencyDeposits() public {
         assertEq(
-            address(weth).balance, 
-            handler.ghost_depositSum() + 
-            handler.ghost_forcePushSum() - 
+            address(weth).balance,
+            handler.ghost_depositSum() +
+            handler.ghost_forcePushSum() -
             handler.ghost_withdrawSum()
         );
     }
@@ -1347,7 +1624,7 @@ And update our invariants to account for this extra Ether:
     function invariant_solvencyBalances() public {
         uint256 sumOfBalances = handler.reduceActors(0, this.accumulateBalance);
         assertEq(
-            address(weth).balance - handler.ghost_forcePushSum(), 
+            address(weth).balance - handler.ghost_forcePushSum(),
             sumOfBalances
         );
     }
@@ -1356,7 +1633,7 @@ And update our invariants to account for this extra Ether:
 
 Invariant tests are a powerful tool, but this case is an interesting illustration of one of its blind spots. A symbolic execution test that models Ether sends via `selfdestruct` would catch this bug pretty quickly, but we nearly missed it with the fuzzer and had to rely on our own knowledge about the WETH contract to cover it. On the other hand, invariant tests are much faster to run than tests using a prover/constraint solver, and allow us to build up a suite of reasonably high confidence invariant properties that we might want to further verify using even more powerful tools.
 
-However, it's important to remember that all fuzz tests are probabilstic: unlike a symbolic test that explores all possible execution paths, fuzz tests are only as good as the random data they generate. This is still very, very, good most of the time! But as with all smart contract testing, we should do it all when we can: unit tests, fuzz tests, fork tests, invariant tests, and formal verification. 
+However, it's important to remember that all fuzz tests are probabilstic: unlike a symbolic test that explores all possible execution paths, fuzz tests are only as good as the random data they generate. This is still very, very, good most of the time! But as with all smart contract testing, we should do it all when we can: unit tests, fuzz tests, fork tests, invariant tests, and formal verification.
 
 Let's give our final tests one good, long, run: 25000 runs with a depth of 25 calls:
 

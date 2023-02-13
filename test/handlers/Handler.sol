@@ -26,8 +26,11 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     uint256 public ghost_forcePushSum;
 
     uint256 public ghost_zeroWithdrawals;
+    uint256 public ghost_zeroTransfers;
+    uint256 public ghost_zeroTransferFroms;
 
     mapping(bytes32 => uint256) public calls;
+
     AddressSet internal _actors;
 
     modifier captureCaller() {
@@ -35,7 +38,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         _;
     }
 
-    modifier captureCall(bytes32 key) {
+    modifier countCall(bytes32 key) {
         calls[key]++;
         _;
     }
@@ -45,7 +48,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         deal(address(this), ETH_SUPPLY);
     }
 
-    function deposit(uint256 amount) public captureCaller captureCall("deposit") {
+    function deposit(uint256 amount) public captureCaller countCall("deposit") {
         amount = bound(amount, 0, address(this).balance);
         _pay(msg.sender, amount);
 
@@ -55,7 +58,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_depositSum += amount;
     }
 
-    function withdraw(uint256 callerSeed, uint256 amount) public captureCall("withdraw") {
+    function withdraw(uint256 callerSeed, uint256 amount) public countCall("withdraw") {
         address caller = _actors.rand(callerSeed);
         amount = bound(amount, 0, weth.balanceOf(caller));
         if (amount == 0) ghost_zeroWithdrawals++;
@@ -68,7 +71,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_withdrawSum += amount;
     }
 
-    function approve(uint256 callerSeed, uint256 spenderSeed, uint256 amount) public captureCall("approve") {
+    function approve(uint256 callerSeed, uint256 spenderSeed, uint256 amount) public countCall("approve") {
         address caller = _actors.rand(callerSeed);
         address spender = _actors.rand(spenderSeed);
 
@@ -76,32 +79,40 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         weth.approve(spender, amount);
     }
 
-    function transfer(uint256 callerSeed, uint256 toSeed, uint256 amount) public captureCall("transfer") {
+    function transfer(uint256 callerSeed, uint256 toSeed, uint256 amount) public countCall("transfer") {
         address caller = _actors.rand(callerSeed);
         address to = _actors.rand(toSeed);
 
         amount = bound(amount, 0, weth.balanceOf(caller));
+        if (amount == 0) ghost_zeroTransfers++;
 
         vm.prank(caller);
         weth.transfer(to, amount);
     }
 
-    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, uint256 amount)
+    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, bool _approve, uint256 amount)
         public
-        captureCall("transferFrom")
+        countCall("transferFrom")
     {
         address caller = _actors.rand(callerSeed);
         address from = _actors.rand(fromSeed);
         address to = _actors.rand(toSeed);
 
         amount = bound(amount, 0, weth.balanceOf(from));
-        amount = bound(amount, 0, weth.allowance(caller, from));
+
+        if (_approve) {
+            vm.prank(from);
+            weth.approve(caller, amount);
+        } else {
+            amount = bound(amount, 0, weth.allowance(caller, from));
+        }
+        if (amount == 0) ghost_zeroTransferFroms++;
 
         vm.prank(caller);
         weth.transferFrom(from, to, amount);
     }
 
-    function sendFallback(uint256 amount) public captureCaller captureCall("sendFallback") {
+    function sendFallback(uint256 amount) public captureCaller countCall("sendFallback") {
         amount = bound(amount, 0, address(this).balance);
         _pay(msg.sender, amount);
 
@@ -111,7 +122,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_depositSum += amount;
     }
 
-    function forcePush(uint256 amount) public captureCall("forcePush") {
+    function forcePush(uint256 amount) public countCall("forcePush") {
         amount = bound(amount, 0, address(this).balance);
         new ForcePush{ value: amount }(address(weth));
         ghost_forcePushSum += amount;
@@ -137,14 +148,16 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         console.log("-------------------");
         console.log("deposit", calls["deposit"]);
         console.log("withdraw", calls["withdraw"]);
+        console.log("sendFallback", calls["sendFallback"]);
         console.log("approve", calls["approve"]);
         console.log("transfer", calls["transfer"]);
         console.log("transferFrom", calls["transferFrom"]);
-        console.log("sendFallback", calls["sendFallback"]);
         console.log("forcePush", calls["forcePush"]);
         console.log("-------------------");
 
         console.log("Zero withdrawals:", ghost_zeroWithdrawals);
+        console.log("Zero transferFroms:", ghost_zeroTransferFroms);
+        console.log("Zero transfers:", ghost_zeroTransfers);
     }
 
     function _pay(address to, uint256 amount) internal {

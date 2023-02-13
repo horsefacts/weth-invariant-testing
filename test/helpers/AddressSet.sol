@@ -26,7 +26,7 @@ library LibAddressSet {
         if (s.addrs.length > 0) {
             return s.addrs[seed % s.addrs.length];
         } else {
-            return address(0xbeef);
+            return address(0);
         }
     }
 
