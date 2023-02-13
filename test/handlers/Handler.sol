@@ -46,10 +46,11 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_depositSum += amount;
     }
 
-    function withdraw(uint256 amount) public captureCaller {
-        amount = bound(amount, 0, weth.balanceOf(msg.sender));
+    function withdraw(uint256 callerSeed, uint256 amount) public {
+        address caller = _actors.rand(callerSeed);
+        amount = bound(amount, 0, weth.balanceOf(caller));
 
-        vm.startPrank(msg.sender);
+        vm.startPrank(caller);
         weth.withdraw(amount);
         _pay(address(this), amount);
         vm.stopPrank();
@@ -57,24 +58,34 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_withdrawSum += amount;
     }
 
-    function approve(address spender, uint256 amount) public {
-        vm.prank(msg.sender);
+    function approve(uint256 callerSeed, uint256 spenderSeed, uint256 amount) public {
+        address caller = _actors.rand(callerSeed);
+        address spender = _actors.rand(spenderSeed);
+
+        vm.prank(caller);
         weth.approve(spender, amount);
     }
 
-    function transfer(address to, uint256 amount) public {
-        amount = bound(amount, 0, weth.balanceOf(msg.sender));
-        _actors.add(to);
+    function transfer(uint256 callerSeed, uint256 toSeed, uint256 amount) public {
+        address caller = _actors.rand(callerSeed);
+        address to = _actors.rand(toSeed);
 
-        vm.prank(msg.sender);
+        amount = bound(amount, 0, weth.balanceOf(caller));
+
+        vm.prank(caller);
         weth.transfer(to, amount);
     }
 
-    function transferFrom(address from, address to, uint256 amount) public {
+    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, uint256 amount) public {
+        address caller = _actors.rand(callerSeed);
+        address from = _actors.rand(fromSeed);
+        address to = _actors.rand(toSeed);
+
         amount = bound(amount, 0, weth.balanceOf(from));
+        amount = bound(amount, 0, weth.allowance(caller, from));
         _actors.add(to);
 
-        vm.prank(msg.sender);
+        vm.prank(caller);
         weth.transferFrom(from, to, amount);
     }
 
