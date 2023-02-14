@@ -130,7 +130,6 @@ An invariant test contract looks just like the `Test` contracts you already know
 Let's create a test contract in `test/WETH9.invariants.t.sol`:
 
 ```solidity
-// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
 import {Test} from "forge-std/Test.sol";
