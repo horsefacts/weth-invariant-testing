@@ -421,7 +421,8 @@ Our tests now pass—and since we're never attempting an invalid deposit that ex
 ```bash
 $ forge test
 Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 1000, calls: 15000, reverts: 0)
+[PASS] invariant_conservationOfETH()
+(runs: 1000, calls: 15000, reverts: 0)
 Test result: ok. 1 passed; 0 failed; finished in 1.24s
 ```
 
@@ -464,7 +465,8 @@ Note also that we're now seeing some reverts in the test runs: these will be the
 ```bash
 $ forge test
 Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 1000, calls: 15000, reverts: 0)
+[PASS] invariant_conservationOfETH()
+(runs: 1000, calls: 15000, reverts: 0)
 Test result: ok. 1 passed; 0 failed; finished in 1.54s
 ```
 
@@ -555,7 +557,8 @@ Let's add our new invariant:
 
 ```bash
 $ forge test
-[PASS] invariant_conservationOfETH() (runs: 1000, calls: 14988, reverts: 0)
+[PASS] invariant_conservationOfETH()
+(runs: 1000, calls: 14988, reverts: 0)
 [FAIL. Reason: Assertion failed.]
         [Sequence]
                 sender=0x0000000000000000000000000000000000000c88
@@ -574,7 +577,8 @@ $ forge test
                   calldata=sendFallback(uint256),
                   args=[1007]
 
- invariant_solvencyDeposits() (runs: 1000, calls: 14988, reverts: 0)
+ invariant_solvencyDeposits()
+ (runs: 1000, calls: 14988, reverts: 0)
 Test result: FAILED. 1 passed; 1 failed; finished in 2.06s
 ```
 
@@ -594,8 +598,10 @@ With this change in place, our tests should now pass:
 ```bash
 $ forge test
 Running 2 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 1000, calls: 15000, reverts: 0)
-[PASS] invariant_solvencyDeposits() (runs: 1000, calls: 15000, reverts: 0)
+[PASS] invariant_conservationOfETH()
+(runs: 1000, calls: 15000, reverts: 0)
+[PASS] invariant_solvencyDeposits()
+(runs: 1000, calls: 15000, reverts: 0)
 Test result: ok. 2 passed; 0 failed; finished in 2.18s
 ```
 
@@ -754,8 +760,10 @@ Second, we need to send the withdrawn amount back to the handler using `_pay`, t
 ```bash
 $ forge test
 Running 2 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 10000, calls: 150000, reverts: 0)
-[PASS] invariant_solvencyDeposits() (runs: 10000, calls: 150000, reverts: 0)
+[PASS] invariant_conservationOfETH()
+(runs: 10000, calls: 150000, reverts: 0)
+[PASS] invariant_solvencyDeposits()
+(runs: 10000, calls: 150000, reverts: 0)
 Test result: ok. 2 passed; 0 failed; finished in 95.41s
 ```
 
@@ -812,10 +820,10 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 }
 ```
 
-Finally, we'll add  a `captureCaller` [modifier](https://docs.soliditylang.org/en/v0.8.18/contracts.html#function-modifiers) that automatically adds `msg.sender` to our `_actors` set on every function where it's applied:
+Finally, we'll add  a `createActor` [modifier](https://docs.soliditylang.org/en/v0.8.18/contracts.html#function-modifiers) that automatically adds `msg.sender` to our `_actors` set on every function where it's applied:
 
 ```solidity
-    modifier captureCaller() {
+    modifier createActor() {
         _actors.add(msg.sender);
         _;
     }
@@ -842,10 +850,62 @@ Now we can load the `actors()` in our test, add up their balances, and make our 
 ```bash
 $ forge test
 Running 3 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 10000, calls: 150000, reverts: 10)
-[PASS] invariant_solvencyBalances() (runs: 10000, calls: 150000, reverts: 10)
-[PASS] invariant_solvencyDeposits() (runs: 10000, calls: 150000, reverts: 10)
+[PASS] invariant_conservationOfETH()
+(runs: 10000, calls: 150000, reverts: 10)
+[PASS] invariant_solvencyBalances()
+(runs: 10000, calls: 150000, reverts: 10)
+[PASS] invariant_solvencyDeposits()
+(runs: 10000, calls: 150000, reverts: 10)
 Test result: ok. 3 passed; 0 failed; finished in 134.45s
+```
+
+To follow the lead of a pattern in the [Foundry Book](https://book.getfoundry.sh/forge/invariant-testing#actor-management), let's make one more update to our modifier. We'll add a `currentActor` state variable and set it in the modifier.
+
+
+```solidity
+    address internal currentActor;
+
+    modifier createActor() {
+        currentActor = msg.sender;
+        _actors.add(msg.sender);
+        _;
+    }
+```
+
+Now we can refer to `currentActor` as the "selected" actor address in our tests:
+
+```solidity
+    function deposit(uint256 amount) public createActor {
+        amount = bound(amount, 0, address(this).balance);
+        _pay(currentActor, amount);
+
+        vm.prank(currentActor);
+        weth.deposit{value: amount}();
+
+        ghost_depositSum += amount;
+    }
+
+    function withdraw(uint256 amount) public createActor {
+        amount = bound(amount, 0, weth.balanceOf(msg.sender));
+
+        vm.startPrank(currentActor);
+        weth.withdraw(amount);
+        _pay(address(this), amount);
+        vm.stopPrank();
+
+        ghost_withdrawSum += amount;
+    }
+
+    function sendFallback(uint256 amount) public createActor {
+        amount = bound(amount, 0, address(this).balance);
+        _pay(currentActor, amount);
+
+        vm.prank(currentActor);
+        (bool success,) = address(weth).call{value: amount}("");
+
+        require(success, "sendFallback failed");
+        ghost_depositSum += amount;
+    }
 ```
 
 ## Helper iterators
@@ -955,9 +1015,12 @@ There's one more change we need to make in the test contract to make this all wo
 ```bash
 $ forge test
 Running 3 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 10000, calls: 150000, reverts: 10)
-[PASS] invariant_solvencyBalances() (runs: 10000, calls: 150000, reverts: 10)
-[PASS] invariant_solvencyDeposits() (runs: 10000, calls: 150000, reverts: 10)
+[PASS] invariant_conservationOfETH()
+(runs: 10000, calls: 150000, reverts: 10)
+[PASS] invariant_solvencyBalances()
+(runs: 10000, calls: 150000, reverts: 10)
+[PASS] invariant_solvencyDeposits()
+(runs: 10000, calls: 150000, reverts: 10)
 Test result: ok. 3 passed; 0 failed; finished in 179.86s
 ```
 
@@ -979,10 +1042,14 @@ Let's add one more invariant property and make use of our `forEach` iterator. Th
 
 ```bash
 Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 1000, calls: 15000, reverts: 11)
-[PASS] invariant_depositorBalances() (runs: 1000, calls: 15000, reverts: 11)
-[PASS] invariant_solvencyBalances() (runs: 1000, calls: 15000, reverts: 11)
-[PASS] invariant_solvencyDeposits() (runs: 1000, calls: 15000, reverts: 11)
+[PASS] invariant_conservationOfETH()
+(runs: 1000, calls: 15000, reverts: 11)
+[PASS] invariant_depositorBalances()
+(runs: 1000, calls: 15000, reverts: 11)
+[PASS] invariant_solvencyBalances()
+(runs: 1000, calls: 15000, reverts: 11)
+[PASS] invariant_solvencyDeposits()
+(runs: 1000, calls: 15000, reverts: 11)
 Test result: ok. 4 passed; 0 failed; finished in 5.80s
 ```
 
@@ -1048,7 +1115,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 We'll apply the modifier to each handler function exposed to the fuzzer and pass the name of the function:
 
 ```solidity
-    function deposit(uint256 amount) public captureCaller countCall("deposit") {
+    function deposit(uint256 amount) public createActor countCall("deposit") {
         amount = bound(amount, 0, address(this).balance);
         _pay(msg.sender, amount);
 
@@ -1133,7 +1200,8 @@ Run our tests:
 
 ```bash
 Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_callSummary() (runs: 2000, calls: 30000, reverts: 13)
+[PASS] invariant_callSummary()
+(runs: 2000, calls: 30000, reverts: 13)
 Logs:
   Call summary:
   -------------------
@@ -1150,7 +1218,8 @@ Both calls to `withdraw` were zero withdrawals. Let's crank up the `depth` to `1
 
 ```bash
 Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_callSummary() (runs: 2000, calls: 200000, reverts: 24)
+[PASS] invariant_callSummary()
+(runs: 2000, calls: 200000, reverts: 24)
 Logs:
   Call summary:
   -------------------
@@ -1225,72 +1294,92 @@ Test result: ok. 1 passed; 0 failed; finished in 40.61ms
 
 Looking better! Note that there will still be _some_ zero withdrawals, since it's also possible to make zero value deposits. We could choose to constrain the tests further to prevent these, too, but as long as we're regularly generating runs with mostly nonzero withdrawals, we're probably OK for now.
 
+To wrap up, let's add a modifier that selects a random actor from a seed and sets their address as `currentActor`:
+
+```solidity
+    modifier useActor(uint256 actorIndexSeed) {
+        currentActor = _actors.rand(actorIndexSeed);
+        _;
+    }
+```
+
+
+```solidity
+    function withdraw(uint256 actorSeed, uint256 amount) public useActor(actorSeed) countCall("withdraw") {
+        amount = bound(amount, 0, weth.balanceOf(currentActor));
+        if (amount == 0) ghost_zeroWithdrawals++;
+
+        vm.startPrank(currentActor);
+        weth.withdraw(amount);
+        _pay(address(this), amount);
+        vm.stopPrank();
+
+        ghost_withdrawSum += amount;
+    }
+```
+
 ## Including transfers
 
 We still haven't exposed `approve`, `transfer`, and `transferFrom` from our handler. Let's do that now. We'll want to constrain these to known actors like we did with `withdraw`:
 
 ```solidity
     function approve(
-        uint256 callerSeed,
+        uint256 actorSeed,
         uint256 spenderSeed,
         uint256 amount
-    ) public countCall("approve") {
-        address caller = _actors.rand(callerSeed);
+    ) public useActor(actorSeed) countCall("approve") {
         address spender = _actors.rand(spenderSeed);
 
-        vm.prank(caller);
+        vm.prank(currentActor);
         weth.approve(spender, amount);
     }
 
     function transfer(
-        uint256 callerSeed,
+        uint256 actorSeed,
         uint256 toSeed,
         uint256 amount
-    ) public countCall("transfer") {
-        address caller = _actors.rand(callerSeed);
+    ) public useActor(actorSeed) countCall("transfer") {
         address to = _actors.rand(toSeed);
 
-        amount = bound(amount, 0, weth.balanceOf(caller));
+        amount = bound(amount, 0, weth.balanceOf(currentActor));
 
-        vm.prank(caller);
+        vm.prank(currentActor);
         weth.transfer(to, amount);
     }
 
     function transferFrom(
-        uint256 callerSeed,
+        uint256 actorSeed,
         uint256 fromSeed,
         uint256 toSeed,
         uint256 amount
-    ) public countCall("transferFrom")
+    ) public useActor(actorSeed) countCall("transferFrom")
     {
-        address caller = _actors.rand(callerSeed);
         address from = _actors.rand(fromSeed);
         address to = _actors.rand(toSeed);
 
         amount = bound(amount, 0, weth.balanceOf(from));
         amount = bound(amount, 0, weth.allowance(caller, from));
 
-        vm.prank(caller);
+        vm.prank(currentActor);
         weth.transferFrom(from, to, amount);
     }
 ```
 
 Some of these require multiple seed arguments in order to select multiple actors.
 
-Note that we call `bound` twice in `transferFrom` to ensure the transfer value is less than the `from` account's balance _and_ that `caller` has a sufficient allowance. If you look carefully at this, you may notice we have a similar problem to the zero amount issue we just solved for `withdraw`: even though we're reuising known callers, most of the time `amount` will be zero, since it's unlikely the `caller` has an approval from the `from` account. (You can use the same call summary process to debug yourself if you're interested).
+Note that we call `bound` twice in `transferFrom` to ensure the transfer value is less than the `from` account's balance _and_ that `currentActor` has a sufficient allowance to perform the third-party transfer. If you look carefully at this, you may notice we have a similar problem to the zero amount issue we just solved for `withdraw`: even though we're reuising known callers, most of the time `amount` will be zero, since it's unlikely the `caller` has an approval from the `from` account. (You can use the same call summary process to debug yourself if you're interested).
 
 Let's add a branch in the handler function that ensures nonzero `transferFrom` amounts at least _some_ of the time, by approving the caller before making the `transferFrom` call. We'll add one more argument to the handler function, a boolean `_approve` that will sometimes pre-approve the caller:
 
 ```solidity
     function transferFrom(
-        uint256 callerSeed,
+        uint256 actorSeed,
         uint256 fromSeed,
         uint256 toSeed,
         bool _approve,
         uint256 amount
-    ) public countCall("transferFrom")
+    ) public useActor(actorSeed) countCall("transferFrom")
     {
-        address caller = _actors.rand(callerSeed);
         address from = _actors.rand(fromSeed);
         address to = _actors.rand(toSeed);
 
@@ -1298,12 +1387,12 @@ Let's add a branch in the handler function that ensures nonzero `transferFrom` a
 
         if (_approve) {
             vm.prank(from);
-            weth.approve(caller, amount);
+            weth.approve(currentActor, amount);
         } else {
-            amount = bound(amount, 0, weth.allowance(caller, from));
+            amount = bound(amount, 0, weth.allowance(currentActor, from));
         }
 
-        vm.prank(caller);
+        vm.prank(currentActor);
         weth.transferFrom(from, to, amount);
     }
 ```
@@ -1336,10 +1425,14 @@ Don't forget to add these new selectors to our configuration in `setUp`:
 
 ```bash
 Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 1000, calls: 15000, reverts: 8)
-[PASS] invariant_depositorBalances() (runs: 1000, calls: 15000, reverts: 8)
-[PASS] invariant_solvencyBalances() (runs: 1000, calls: 15000, reverts: 8)
-[PASS] invariant_solvencyDeposits() (runs: 1000, calls: 15000, reverts: 8)
+[PASS] invariant_conservationOfETH()
+(runs: 1000, calls: 15000, reverts: 8)
+[PASS] invariant_depositorBalances()
+(runs: 1000, calls: 15000, reverts: 8)
+[PASS] invariant_solvencyBalances()
+(runs: 1000, calls: 15000, reverts: 8)
+[PASS] invariant_solvencyDeposits()
+(runs: 1000, calls: 15000, reverts: 8)
 Test result: ok. 4 passed; 0 failed; finished in 5.87s
 ```
 
@@ -1361,7 +1454,8 @@ If our invariant tests are any good, they should catch the bug we introduced:
 ```bash
 $ forge test
 Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 2000, calls: 29974, reverts: 3)
+[PASS] invariant_conservationOfETH()
+(runs: 2000, calls: 29974, reverts: 3)
 [FAIL. Reason: Assertion failed.]
         [Sequence]
                 sender=0x849a5a123d8d365eef30374417ef4fcbba5a9781
@@ -1375,7 +1469,8 @@ Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
                 calldata=sendFallback(uint256),
                 args=[0]
 
- invariant_depositorBalances() (runs: 2000, calls: 29974, reverts: 3)
+ invariant_depositorBalances()
+ (runs: 2000, calls: 29974, reverts: 3)
 [FAIL. Reason: Assertion failed.]
         [Sequence]
                 sender=0x000000000000000000000000000000000000006a
@@ -1582,8 +1677,10 @@ Our tests now fail, and it looks like they're failing in the places we should ex
 
 ```bash
 Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 5000, calls: 74986, reverts: 9)
-[PASS] invariant_depositorBalances() (runs: 5000, calls: 74986, reverts: 9)
+[PASS] invariant_conservationOfETH()
+(runs: 5000, calls: 74986, reverts: 9)
+[PASS] invariant_depositorBalances()
+(runs: 5000, calls: 74986, reverts: 9)
 [FAIL. Reason: Assertion failed.]
         [Sequence]
                 sender=0x0000000000000000000000000000000000000b69
@@ -1658,10 +1755,14 @@ Let's give our final tests one good, long, run: 25000 runs with a depth of 25 ca
 
 ```bash
 Running 4 tests for test/WETH9.invariants.t.sol:WETH9Invariants
-[PASS] invariant_conservationOfETH() (runs: 25000, calls: 625000, reverts: 15)
-[PASS] invariant_depositorBalances() (runs: 25000, calls: 625000, reverts: 15)
-[PASS] invariant_solvencyBalances() (runs: 25000, calls: 625000, reverts: 15)
-[PASS] invariant_solvencyDeposits() (runs: 25000, calls: 625000, reverts: 15)
+[PASS] invariant_conservationOfETH()
+(runs: 25000, calls: 625000, reverts: 15)
+[PASS] invariant_depositorBalances()
+(runs: 25000, calls: 625000, reverts: 15)
+[PASS] invariant_solvencyBalances()
+(runs: 25000, calls: 625000, reverts: 15)
+[PASS] invariant_solvencyDeposits()
+(runs: 25000, calls: 625000, reverts: 15)
 Test result: ok. 4 passed; 0 failed; finished in 6995.00s
 ```
 
