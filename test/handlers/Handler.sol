@@ -32,9 +32,16 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     mapping(bytes32 => uint256) public calls;
 
     AddressSet internal _actors;
+    address internal currentActor;
 
-    modifier captureCaller() {
+    modifier createActor() {
+        currentActor = msg.sender;
         _actors.add(msg.sender);
+        _;
+    }
+
+    modifier useActor(uint256 actorIndexSeed) {
+        currentActor = _actors.rand(actorIndexSeed);
         _;
     }
 
@@ -48,22 +55,21 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         deal(address(this), ETH_SUPPLY);
     }
 
-    function deposit(uint256 amount) public captureCaller countCall("deposit") {
+    function deposit(uint256 amount) public createActor countCall("deposit") {
         amount = bound(amount, 0, address(this).balance);
-        _pay(msg.sender, amount);
+        _pay(currentActor, amount);
 
-        vm.prank(msg.sender);
+        vm.prank(currentActor);
         weth.deposit{value: amount}();
 
         ghost_depositSum += amount;
     }
 
-    function withdraw(uint256 callerSeed, uint256 amount) public countCall("withdraw") {
-        address caller = _actors.rand(callerSeed);
-        amount = bound(amount, 0, weth.balanceOf(caller));
+    function withdraw(uint256 actorSeed, uint256 amount) public useActor(actorSeed) countCall("withdraw") {
+        amount = bound(amount, 0, weth.balanceOf(currentActor));
         if (amount == 0) ghost_zeroWithdrawals++;
 
-        vm.startPrank(caller);
+        vm.startPrank(currentActor);
         weth.withdraw(amount);
         _pay(address(this), amount);
         vm.stopPrank();
@@ -71,30 +77,36 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         ghost_withdrawSum += amount;
     }
 
-    function approve(uint256 callerSeed, uint256 spenderSeed, uint256 amount) public countCall("approve") {
-        address caller = _actors.rand(callerSeed);
+    function approve(uint256 actorSeed, uint256 spenderSeed, uint256 amount)
+        public
+        useActor(actorSeed)
+        countCall("approve")
+    {
         address spender = _actors.rand(spenderSeed);
 
-        vm.prank(caller);
+        vm.prank(currentActor);
         weth.approve(spender, amount);
     }
 
-    function transfer(uint256 callerSeed, uint256 toSeed, uint256 amount) public countCall("transfer") {
-        address caller = _actors.rand(callerSeed);
+    function transfer(uint256 actorSeed, uint256 toSeed, uint256 amount)
+        public
+        useActor(actorSeed)
+        countCall("transfer")
+    {
         address to = _actors.rand(toSeed);
 
-        amount = bound(amount, 0, weth.balanceOf(caller));
+        amount = bound(amount, 0, weth.balanceOf(currentActor));
         if (amount == 0) ghost_zeroTransfers++;
 
-        vm.prank(caller);
+        vm.prank(currentActor);
         weth.transfer(to, amount);
     }
 
-    function transferFrom(uint256 callerSeed, uint256 fromSeed, uint256 toSeed, bool _approve, uint256 amount)
+    function transferFrom(uint256 actorSeed, uint256 fromSeed, uint256 toSeed, bool _approve, uint256 amount)
         public
+        useActor(actorSeed)
         countCall("transferFrom")
     {
-        address caller = _actors.rand(callerSeed);
         address from = _actors.rand(fromSeed);
         address to = _actors.rand(toSeed);
 
@@ -102,21 +114,21 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
         if (_approve) {
             vm.prank(from);
-            weth.approve(caller, amount);
+            weth.approve(currentActor, amount);
         } else {
-            amount = bound(amount, 0, weth.allowance(caller, from));
+            amount = bound(amount, 0, weth.allowance(currentActor, from));
         }
         if (amount == 0) ghost_zeroTransferFroms++;
 
-        vm.prank(caller);
+        vm.prank(currentActor);
         weth.transferFrom(from, to, amount);
     }
 
-    function sendFallback(uint256 amount) public captureCaller countCall("sendFallback") {
+    function sendFallback(uint256 amount) public createActor countCall("sendFallback") {
         amount = bound(amount, 0, address(this).balance);
-        _pay(msg.sender, amount);
+        _pay(currentActor, amount);
 
-        vm.prank(msg.sender);
+        vm.prank(currentActor);
         _pay(address(weth), amount);
 
         ghost_depositSum += amount;
