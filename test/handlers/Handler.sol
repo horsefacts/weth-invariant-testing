@@ -116,7 +116,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
             vm.prank(from);
             weth.approve(currentActor, amount);
         } else {
-            amount = bound(amount, 0, weth.allowance(currentActor, from));
+            amount = bound(amount, 0, weth.allowance(from, currentActor));
         }
         if (amount == 0) ghost_zeroTransferFroms++;
 
