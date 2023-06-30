@@ -136,7 +136,7 @@ import {Test} from "forge-std/Test.sol";
 import {InvariantTest} from "forge-std/InvariantTest.sol";
 import {WETH9} from "../src/WETH9.sol";
 
-contract WETH9Invariants is Test, {
+contract WETH9Invariants is Test {
     WETH9 public weth;
 
     function setUp() public {
