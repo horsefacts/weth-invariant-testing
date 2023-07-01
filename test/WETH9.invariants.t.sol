@@ -63,4 +63,18 @@ contract WETH9Invariants is Test {
             sumOfBalances
         );
     }
+
+    // PROPERTY: Individual Balance Invariant
+    // No individual account balance can exceed the
+    // WETH totalSupply()
+    function invariant_depositorBalances() public {
+        address[] memory actors = handler.actors();
+        for (uint256 i; i < actors.length; ++i) {
+            assertLe(weth.balanceOf(actors[i]), weth.totalSupply());
+        }
+    }
+
+    function invariant_callSummary() public view {
+        handler.callSummary();
+    }
 }

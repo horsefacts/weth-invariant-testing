@@ -1,5 +1,6 @@
 pragma solidity ^0.8.13;
 
+import "forge-std/console.sol";
 import {CommonBase} from "forge-std/Base.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
@@ -15,14 +16,22 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     AddressSet internal _actors;
     address internal currentActor;
 
+    mapping(bytes32 => uint256) public calls;
+
     uint256 public constant ETH_SUPPLY = 120_500_000 ether;
 
     uint256 public ghost_depositSum;
     uint256 public ghost_withdrawSum;
+    uint256 public ghost_zeroWithdrawals;
 
     modifier createActor() {
         currentActor = msg.sender;
         _actors.add(msg.sender);
+        _;
+    }
+
+    modifier countCall(bytes32 key) {
+        calls[key]++;
         _;
     }
 
@@ -35,7 +44,17 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         return _actors.addrs;
     }
 
-    function deposit(uint256 amount) public createActor {
+    function callSummary() external view {
+        console.log("Call summary:");
+        console.log("-------------------");
+        console.log("deposit", calls["deposit"]);
+        console.log("withdraw", calls["withdraw"]);
+        console.log("sendFallback", calls["sendFallback"]);
+        console.log("-------------------");
+        console.log("Zero withdrawals:", ghost_zeroWithdrawals);
+    }
+
+    function deposit(uint256 amount) public createActor countCall("deposit") {
         amount = bound(amount, 0, address(this).balance);
         _pay(currentActor, amount);
 
@@ -45,9 +64,10 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         weth.deposit{ value: amount }();
     }
 
-    function withdraw(uint256 amount) public createActor {
+    function withdraw(uint256 amount) public createActor countCall("withdraw") {
         amount = bound(amount, 0, weth.balanceOf(currentActor));
 
+        if (amount == 0) ghost_zeroWithdrawals++;
         ghost_withdrawSum += amount;
 
         vm.startPrank(currentActor);
@@ -56,7 +76,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         vm.stopPrank();
     }
 
-    function sendFallback(uint256 amount) public createActor {
+    function sendFallback(uint256 amount) public createActor countCall("sendFallback") {
         amount = bound(amount, 0, address(this).balance);
         _pay(currentActor, amount);
 
