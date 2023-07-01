@@ -16,7 +16,15 @@ contract WETH9Invariants is Test {
         targetContract(address(handler));
     }
 
-    function invariant_wethSupplyIsAlwaysZero() public {
-        assertEq(0, weth.totalSupply());
+    // PROPERTY: Conservation of Ether
+    // ETH can only be wrapped into WETH, WETH can only
+    // be unwrapped back into ETH. The sum of the Handler's
+    // ETH balance plus the WETH totalSupply() should always
+    // equal the total ETH_SUPPLY.
+    function invariant_conservationOfETH() public {
+        assertEq(
+          handler.ETH_SUPPLY(),
+          address(handler).balance + weth.totalSupply()
+        );
     }
 }
