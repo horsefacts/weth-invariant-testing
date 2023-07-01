@@ -13,6 +13,16 @@ contract WETH9Invariants is Test {
         weth = new WETH9();
         handler = new Handler(weth);
 
+        bytes4[] memory selectors = new bytes4[](3);
+        selectors[0] = Handler.deposit.selector;
+        selectors[1] = Handler.withdraw.selector;
+        selectors[2] = Handler.sendFallback.selector;
+
+        targetSelector(FuzzSelector({
+            addr: address(handler),
+            selectors: selectors
+        }));
+
         targetContract(address(handler));
     }
 
@@ -42,8 +52,12 @@ contract WETH9Invariants is Test {
     // PROPERTY: Solvency of Balances
     // The WETH contract's Ether balance should always be
     // at least as much as the sum of individual balances
-    function xinvariant_solvencyBalances() public {
-        uint256 sumOfBalances = 0;
+    function invariant_solvencyBalances() public {
+        uint256 sumOfBalances;
+        address[] memory actors = handler.actors();
+        for (uint256 i; i < actors.length; ++i) {
+            sumOfBalances += weth.balanceOf(actors[i]);
+        }
         assertEq(
             address(weth).balance,
             sumOfBalances

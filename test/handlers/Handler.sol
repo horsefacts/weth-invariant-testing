@@ -5,48 +5,64 @@ import {StdCheats} from "forge-std/StdCheats.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
 
 import {WETH9} from "../../src/WETH9.sol";
+import {LibAddressSet, AddressSet} from "../helpers/AddressSet.sol";
 
 contract Handler is CommonBase, StdCheats, StdUtils {
+    using LibAddressSet for AddressSet;
+
     WETH9 public weth;
+
+    AddressSet internal _actors;
+    address internal currentActor;
 
     uint256 public constant ETH_SUPPLY = 120_500_000 ether;
 
     uint256 public ghost_depositSum;
     uint256 public ghost_withdrawSum;
 
+    modifier createActor() {
+        currentActor = msg.sender;
+        _actors.add(msg.sender);
+        _;
+    }
+
     constructor(WETH9 _weth) {
         weth = _weth;
         deal(address(this), ETH_SUPPLY);
     }
 
-    function deposit(uint256 amount) public {
+    function actors() external view returns (address[] memory) {
+        return _actors.addrs;
+    }
+
+    function deposit(uint256 amount) public createActor {
         amount = bound(amount, 0, address(this).balance);
-        _pay(msg.sender, amount);
+        _pay(currentActor, amount);
 
         ghost_depositSum += amount;
 
-        vm.prank(msg.sender);
+        vm.prank(currentActor);
         weth.deposit{ value: amount }();
     }
 
-    function withdraw(uint256 amount) public {
-        amount = bound(amount, 0, weth.balanceOf(msg.sender));
+    function withdraw(uint256 amount) public createActor {
+        amount = bound(amount, 0, weth.balanceOf(currentActor));
 
         ghost_withdrawSum += amount;
 
-        vm.startPrank(msg.sender);
+        vm.startPrank(currentActor);
         weth.withdraw(amount);
         _pay(address(this), amount);
         vm.stopPrank();
     }
 
-    function sendFallback(uint256 amount) public {
+    function sendFallback(uint256 amount) public createActor {
         amount = bound(amount, 0, address(this).balance);
-        _pay(msg.sender, amount);
+        _pay(currentActor, amount);
 
         ghost_depositSum += amount;
 
-        vm.prank(msg.sender);
+        vm.prank(currentActor);
         (bool success,) = address(weth).call{ value: amount }("");
         require(success, "sendFallback failed");
     }
