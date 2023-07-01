@@ -11,6 +11,9 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
     uint256 public constant ETH_SUPPLY = 120_500_000 ether;
 
+    uint256 public ghost_depositSum;
+    uint256 public ghost_withdrawSum;
+
     constructor(WETH9 _weth) {
         weth = _weth;
         deal(address(this), ETH_SUPPLY);
@@ -18,16 +21,19 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
     function deposit(uint256 amount) public {
         amount = bound(amount, 0, address(this).balance);
+        ghost_depositSum += amount;
         weth.deposit{ value: amount }();
     }
 
     function withdraw(uint256 amount) public {
         amount = bound(amount, 0, weth.balanceOf(address(this)));
+        ghost_withdrawSum += amount;
         weth.withdraw(amount);
     }
 
     function sendFallback(uint256 amount) public {
         amount = bound(amount, 0, address(this).balance);
+        ghost_depositSum += amount;
         (bool success,) = address(weth).call{ value: amount }("");
         require(success, "sendFallback failed");
     }
