@@ -55,6 +55,9 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         console.log("deposit", calls["deposit"]);
         console.log("withdraw", calls["withdraw"]);
         console.log("sendFallback", calls["sendFallback"]);
+        console.log("approve", calls["approve"]);
+        console.log("transfer", calls["transfer"]);
+        console.log("transferFrom", calls["transferFrom"]);
         console.log("-------------------");
         console.log("Zero withdrawals:", ghost_zeroWithdrawals);
     }
@@ -92,8 +95,56 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         require(success, "sendFallback failed");
     }
 
+    function approve(
+        uint256 seed,
+        uint256 spenderSeed,
+        uint256 amount
+    ) public useActor(seed) countCall("approve") {
+        address spender = _actors.rand(spenderSeed);
+
+        vm.prank(currentActor);
+        weth.approve(spender, amount);
+    }
+
+    function transfer(
+        uint256 seed,
+        uint256 toSeed,
+        uint256 amount
+    ) public useActor(seed) countCall("transfer") {
+        address to = _actors.rand(toSeed);
+
+        amount = bound(amount, 0, weth.balanceOf(currentActor));
+
+        vm.prank(currentActor);
+        weth.transfer(to, amount);
+    }
+
+    function transferFrom(
+        uint256 seed,
+        uint256 fromSeed,
+        uint256 toSeed,
+        bool _approve,
+        uint256 amount
+    ) public useActor(seed) countCall("transferFrom")
+    {
+        address from = _actors.rand(fromSeed);
+        address to = _actors.rand(toSeed);
+
+        amount = bound(amount, 0, weth.balanceOf(from));
+
+        if (_approve) {
+            vm.prank(from);
+            weth.approve(currentActor, amount);
+        } else {
+            amount = bound(amount, 0, weth.allowance(currentActor, from));
+        }
+
+        vm.prank(currentActor);
+        weth.transferFrom(from, to, amount);
+    }
+
     function _pay(address to, uint256 amount) internal {
-        (bool success,) = to.call{ value: amount }("");
+        (bool success,) = payable(to).call{ value: amount }("");
         require(success, "pay failed");
     }
 
