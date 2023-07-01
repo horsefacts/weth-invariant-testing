@@ -22,6 +22,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
     uint256 public ghost_depositSum;
     uint256 public ghost_withdrawSum;
+    uint256 public ghost_forcePushSum;
     uint256 public ghost_zeroWithdrawals;
 
     modifier createActor() {
@@ -143,10 +144,22 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         weth.transferFrom(from, to, amount);
     }
 
+    function forcePush(uint256 amount) public countCall("forcePush") {
+        amount = bound(amount, 0, address(this).balance);
+        ghost_forcePushSum += amount;
+        new ForcePush{ value: amount }(address(weth));
+    }
+
     function _pay(address to, uint256 amount) internal {
         (bool success,) = payable(to).call{ value: amount }("");
         require(success, "pay failed");
     }
 
     receive() external payable {}
+}
+
+contract ForcePush {
+    constructor(address dst) payable {
+        selfdestruct(payable(dst));
+    }
 }
