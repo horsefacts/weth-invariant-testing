@@ -30,6 +30,11 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         _;
     }
 
+    modifier useActor(uint256 seed) {
+        currentActor = _actors.rand(seed);
+        _;
+    }
+
     modifier countCall(bytes32 key) {
         calls[key]++;
         _;
@@ -64,7 +69,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         weth.deposit{ value: amount }();
     }
 
-    function withdraw(uint256 amount) public createActor countCall("withdraw") {
+    function withdraw(uint256 amount, uint256 seed) public useActor(seed) countCall("withdraw") {
         amount = bound(amount, 0, weth.balanceOf(currentActor));
 
         if (amount == 0) ghost_zeroWithdrawals++;
