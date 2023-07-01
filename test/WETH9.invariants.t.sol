@@ -38,4 +38,15 @@ contract WETH9Invariants is Test {
           handler.ghost_depositSum() - handler.ghost_withdrawSum()
         );
     }
+
+    // PROPERTY: Solvency of Balances
+    // The WETH contract's Ether balance should always be
+    // at least as much as the sum of individual balances
+    function xinvariant_solvencyBalances() public {
+        uint256 sumOfBalances = 0;
+        assertEq(
+            address(weth).balance,
+            sumOfBalances
+        );
+    }
 }
