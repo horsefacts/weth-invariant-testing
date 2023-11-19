@@ -222,7 +222,7 @@ A nice feature of Foundry is that it's possible to define unit and invariant tes
 ```
 
 ```bash
-$ forge test -m test_zeroDeposit
+$ forge test --mt test_zeroDeposit
 
 Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
 [PASS] test_zeroDeposit() (gas: 11071)
@@ -1146,7 +1146,7 @@ Finally, in our invariant tests, we can add an `invariant_callSummary()` functio
 If we run our tests with the `-vv` flag, we'll see the summary result:
 
 ```bash
-$ forge test -vv -m invariant_callSummary
+$ forge test -vv --mt invariant_callSummary
 Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
 [PASS] invariant_callSummary()
 (runs: 2000, calls: 30000, reverts: 2)
@@ -1274,7 +1274,7 @@ Now, the fuzzer will generate a random `callerSeed`, we'll use it to retrieve a 
 Let's look at the call summary:
 
 ```bash
-$ forge test -vv -m invariant_callSummary
+$ forge test -vv --mt invariant_callSummary
 
 Running 1 test for test/WETH9.invariants.t.sol:WETH9Invariants
 [PASS] invariant_callSummary()
