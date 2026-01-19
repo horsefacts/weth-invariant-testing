@@ -35,6 +35,13 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     address internal currentActor;
 
     modifier createActor() {
+        if (msg.sender == address(weth) ||
+            msg.sender == address(this)) {
+            assembly {
+                return(0,0)
+            }
+        }
+
         currentActor = msg.sender;
         _actors.add(msg.sender);
         _;
